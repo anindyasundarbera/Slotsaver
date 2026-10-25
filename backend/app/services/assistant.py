@@ -402,6 +402,26 @@ class Assistant:
         service = db.execute(select(Service).where(Service.code == code)).scalar_one_or_none()
         return service.name.lower() if service else "service"
 
+    def _completion_body(self, messages: list[dict], *, tools_already_used: bool) -> dict:
+        """Request body. After a tool round, force a text answer.
+
+        Leaving `tool_choice: auto` lets some providers loop or answer in prose; a
+        known tool result means the model has what it needs to answer.
+        """
+        body: dict = {
+            "model": self.settings.llm_model,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": 500,
+            "response_format": {"type": "json_object"},
+        }
+        if tools_already_used:
+            body["tool_choice"] = "none"
+        else:
+            body["tools"] = [{"type": "function", "function": t} for t in TOOL_DEFINITIONS]
+            body["tool_choice"] = "auto"
+        return body
+
     def _run_llm(self, db: Session, customer: User, message: str, demo_day: date) -> AssistantReply:
         trace: list[ToolTrace] = []
         options: list[OptionOut] = []
@@ -427,15 +447,7 @@ class Assistant:
                             "Authorization": f"Bearer {self.settings.llm_api_key}",
                             "Content-Type": "application/json",
                         },
-                        json={
-                            "model": self.settings.llm_model,
-                            "messages": messages,
-                            "tools": [{"type": "function", "function": t} for t in TOOL_DEFINITIONS],
-                            "tool_choice": "auto",
-                            "temperature": 0.2,
-                            "max_tokens": 400,
-                            "response_format": {"type": "json_object"},
-                        },
+                        json=self._completion_body(messages, tools_already_used=bool(trace)),
                     )
                 except httpx.HTTPError as exc:
                     raise ProviderUnavailable("The AI service is unreachable.") from exc
@@ -528,25 +540,119 @@ class Assistant:
                     continue
 
                 content = (msg.get("content") or "").strip()
-                parsed = _strict_json(content)
-                reply_text = str(parsed.get("reply", "")).strip()
-                if not reply_text:
-                    raise ValueError("assistant returned no reply text")
-                constraints_payload = parsed.get("constraints") or {}
-                needs_clarification = bool(parsed.get("needs_clarification"))
-                question = parsed.get("clarification_question")
-                return AssistantReply(
-                    reply=reply_text[:600],
-                    conversation_id="llm",
-                    constraints=constraints_payload if isinstance(constraints_payload, dict) else {},
-                    options=options,
-                    needs_clarification=needs_clarification,
-                    clarification_question=str(question)[:200] if question else None,
-                    tool_trace=trace,
-                    mode="llm",
-                )
+                parsed = _try_json(content)
+
+                if parsed is not None:
+                    reply_text = str(parsed.get("reply", "")).strip()
+                    constraints_payload = parsed.get("constraints") or {}
+                    needs_clarification = bool(parsed.get("needs_clarification"))
+                    question = parsed.get("clarification_question")
+                    if reply_text:
+                        return AssistantReply(
+                            reply=reply_text[:600],
+                            conversation_id="llm",
+                            constraints=constraints_payload
+                            if isinstance(constraints_payload, dict)
+                            else {},
+                            options=options,
+                            needs_clarification=needs_clarification,
+                            clarification_question=str(question)[:200] if question else None,
+                            tool_trace=trace,
+                            mode="llm",
+                        )
+
+                # Many OpenAI-compatible providers ignore `response_format` once a
+                # tool call has happened and answer in prose. The options are still
+                # real (they came from the tool), so keep the answer instead of
+                # discarding a successful call — but never invent structure from it.
+                prose = _strip_fences(content)
+                if prose:
+                    if claims_mutation(prose):
+                        # Never relay a false claim of a state change. Replace it
+                        # with a server-authored correction and send the user to
+                        # the form.
+                        log.warning("llm claimed a mutation it cannot perform; correcting")
+                        return AssistantReply(
+                            reply=SERVER_CORRECTION,
+                            conversation_id="llm",
+                            constraints={},
+                            options=options,
+                            needs_clarification=not options,
+                            tool_trace=trace,
+                            fallback_required=True,
+                            fallback_reason=(
+                                "The assistant described an action it cannot perform. "
+                                "Nothing was changed."
+                            ),
+                            mode="llm",
+                        )
+                    log.info("llm answered in prose, not JSON; keeping tool-derived options")
+                    return AssistantReply(
+                        reply=prose[:600],
+                        conversation_id="llm",
+                        constraints={},
+                        options=options,
+                        needs_clarification=not options,
+                        tool_trace=trace,
+                        mode="llm",
+                    )
+
+                raise ValueError("assistant returned no usable content")
 
         raise ValueError("tool iteration budget exhausted")
+
+
+# Phrases that assert a completed state change. The assistant has no write tool, so
+# any such claim is false by construction and must never be relayed as fact.
+_MUTATION_CLAIMS = (
+    "i booked",
+    "i have booked",
+    "i've booked",
+    "booked it for you",
+    "i confirmed",
+    "i have confirmed",
+    "i've confirmed",
+    "i charged",
+    "i have charged",
+    "i captured",
+    "i refunded",
+    "i cancelled your",
+    "i canceled your",
+    "payment succeeded",
+    "payment is complete",
+    "you are booked",
+    "has been booked",
+    "has been confirmed",
+    "has been charged",
+)
+
+
+def claims_mutation(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(phrase in lowered for phrase in _MUTATION_CLAIMS)
+
+
+SERVER_CORRECTION = (
+    "I can only look up availability and your own bookings — I cannot hold, book, "
+    "charge or refund anything. Nothing has been changed. Choose an appointment in "
+    "the options list to hold it, then pay to confirm."
+)
+
+
+def _strip_fences(raw: str) -> str:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+        text = re.sub(r"```$", "", text).strip()
+    return text
+
+
+def _try_json(raw: str) -> dict | None:
+    """Return the parsed object when it satisfies the reply contract, else None."""
+    try:
+        return _strict_json(raw)
+    except (ValueError, json.JSONDecodeError):
+        return None
 
 
 def _strict_json(raw: str) -> dict:

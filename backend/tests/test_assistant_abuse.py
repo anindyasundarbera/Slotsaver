@@ -188,8 +188,14 @@ def test_llm_mode_falls_back_on_malformed_output(settings, db, monkeypatch):
 
     monkeypatch.setattr(httpx.Client, "post", lambda self, *a, **k: FakeResponse())
     reply = assistant.run(db, customer, "washing machine tomorrow after 4 PM", settings.demo_date)
+
+    # The model falsely claimed it had booked something. That must never be relayed
+    # as fact, and the user must be pointed at the form.
     assert reply.fallback_required is True
-    assert reply.mode == "scripted"
+    assert "booked it for you" not in reply.reply.lower()
+    assert "cannot" in reply.reply.lower()
+    assert "nothing has been changed" in reply.reply.lower()
+    assert reply.options == [], "no fabricated options either"
 
 
 def test_rate_limit_applies_to_assistant(client, login):
@@ -203,3 +209,141 @@ def test_rate_limit_applies_to_assistant(client, login):
             ).status_code
         )
     assert 429 in codes, "the assistant endpoint must be rate limited"
+
+
+# ---------------------------------------------------------------------------
+# Live-compatible LLM output handling (found while exercising a real provider).
+# Some OpenAI-compatible endpoints ignore `response_format` after a tool call and
+# answer in prose. Discarding a successful tool call is a product defect, but we
+# must still never fabricate structure from prose.
+# ---------------------------------------------------------------------------
+def test_prose_answer_after_tool_call_is_kept_with_real_options(settings, db, monkeypatch):
+    from dataclasses import replace
+
+    from sqlalchemy import select as sa_select
+
+    from app.models import User
+
+    llm_settings = replace(settings, assistant_mode="llm", llm_api_key="test-key")
+    assistant = Assistant(llm_settings)
+    customer = db.execute(sa_select(User).where(User.email == "maya@example.com")).scalar_one()
+
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def fake_post(self, url, json=None, **kwargs):
+        calls.append(json or {})
+        if len(calls) == 1:
+            return FakeResponse(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "search_availability",
+                                            "arguments": (
+                                                '{"service_code":"washer-repair",'
+                                                '"day":"2026-11-04","after_local":"16:00"}'
+                                            ),
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            )
+        # Second round: prose, ignoring the JSON contract.
+        return FakeResponse(
+            {"choices": [{"message": {"content": "Three slots, all $75. Pick one in the form."}}]}
+        )
+
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    reply = assistant.run(db, customer, "washer tomorrow after 4pm", settings.demo_date)
+
+    assert reply.mode == "llm"
+    assert reply.fallback_required is False
+    assert reply.options, "tool-derived options must survive a prose answer"
+    assert "Three slots" in reply.reply
+    assert reply.constraints == {}, "prose must never be parsed into structured constraints"
+
+
+def test_tools_are_withdrawn_after_a_tool_round(settings, db, monkeypatch):
+    """Leaving tool_choice=auto invites loops or prose; the second call must force text."""
+    from dataclasses import replace
+
+    from sqlalchemy import select as sa_select
+
+    from app.models import User
+
+    llm_settings = replace(settings, assistant_mode="llm", llm_api_key="test-key")
+    assistant = Assistant(llm_settings)
+    customer = db.execute(sa_select(User).where(User.email == "maya@example.com")).scalar_one()
+
+    bodies: list[dict] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def fake_post(self, url, json=None, **kwargs):
+        bodies.append(json or {})
+        if len(bodies) == 1:
+            return FakeResponse(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "c1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "search_availability",
+                                            "arguments": '{"service_code":"dryer-repair","day":"2026-11-04"}',
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            )
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"reply":"ok","constraints":{},'
+                            '"needs_clarification":false,"clarification_question":null}'
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    reply = assistant.run(db, customer, "dryer tomorrow", settings.demo_date)
+
+    assert reply.mode == "llm" and reply.fallback_required is False
+    assert "tools" in bodies[0] and bodies[0]["tool_choice"] == "auto"
+    assert "tools" not in bodies[1], "the tool list must be withdrawn on the final round"
+    assert bodies[1]["tool_choice"] == "none"

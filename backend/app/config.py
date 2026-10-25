@@ -11,7 +11,19 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 ENV_FILE = BACKEND_DIR / ".env"
 
 SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
-ALLOWED_PAYPAL_ORIGINS = {SANDBOX_BASE_URL}
+# Documented API host plus its legacy alias. Both are the *API*; the bare
+# `sandbox.paypal.com` is the buyer-facing web host and is not an API origin.
+ALLOWED_PAYPAL_ORIGINS = {
+    SANDBOX_BASE_URL,
+    "https://api.sandbox.paypal.com",
+}
+# Hosts people commonly confuse with the API origin, for a useful error message.
+MISCONFIGURED_PAYPAL_HOSTS = {
+    "https://sandbox.paypal.com": "that is PayPal's buyer-facing web host, not the API",
+    "https://www.sandbox.paypal.com": "that is the checkout page host, not the API",
+    "https://api-m.paypal.com": "that is LIVE PayPal; this POC refuses live mode",
+    "https://api.paypal.com": "that is LIVE PayPal; this POC refuses live mode",
+}
 
 
 def _load_dotenv_once() -> bool:
@@ -138,7 +150,8 @@ class Settings:
 
     @property
     def paypal_base_url(self) -> str:
-        return self.paypal_base_url_override or SANDBOX_BASE_URL
+        """Always an allowed API origin; the legacy alias is normalised."""
+        return SANDBOX_BASE_URL
 
     def local(self, dt: datetime) -> datetime:
         return dt.astimezone(self.tz)
@@ -225,11 +238,18 @@ def load_settings(*, strict: bool = True) -> Settings:
     ):
         raise ConfigError("PAYPAL_MODE=sandbox requires PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET")
     if settings.paypal_base_url_override:
-        origin = settings.paypal_base_url_override.rstrip("/")
+        origin = settings.paypal_base_url_override.strip().rstrip("/")
+        if origin in MISCONFIGURED_PAYPAL_HOSTS:
+            raise ConfigError(
+                f"PAYPAL_BASE_URL={origin!r} is wrong: "
+                f"{MISCONFIGURED_PAYPAL_HOSTS[origin]}. "
+                f"Leave PAYPAL_BASE_URL blank, or set it to {SANDBOX_BASE_URL}."
+            )
         if origin not in ALLOWED_PAYPAL_ORIGINS:
             raise ConfigError(
-                "PAYPAL_BASE_URL must be the approved sandbox origin "
-                f"({SANDBOX_BASE_URL}); live or unknown hosts are refused by this POC."
+                "PAYPAL_BASE_URL must be the approved sandbox API origin "
+                f"({SANDBOX_BASE_URL}); live or unknown hosts are refused by this POC. "
+                "Leave it blank to use the default."
             )
     for name, value in (
         ("PAYPAL_RETURN_URL", settings.paypal_return_url),

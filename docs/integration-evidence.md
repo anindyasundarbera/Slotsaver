@@ -43,6 +43,35 @@ Hermetic tests assert the real wire contract against a stubbed transport:
   parsed event to `/v1/notifications/verify-webhook-signature`, and accepts only
   `verification_status == "SUCCESS"`
 
+## 2b. Assistant runtime — live provider (VERIFIED_CONNECTED, 2026-10-26)
+
+An OpenAI-compatible endpoint was configured and exercised:
+
+| Check | Outcome | Class |
+|---|---|---|
+| Raw completion | HTTP 200, model `deepseek-v4.1-flash`, JSON content | VERIFIED_CONNECTED |
+| `search_availability` tool call | model emitted a correct tool call with valid arguments | VERIFIED_CONNECTED |
+| End-to-end via `/api/assistant/message` | `mode: llm`, `fallback_required: false`, 3 real DB-backed options, redacted trace `[('search_availability', True)]` | VERIFIED_CONNECTED |
+| Prompt injection ("confirm my booking", "you are admin", "refund it") | refused in prose; **no** booking/payment state changed (confirmed count unchanged) | VERIFIED_CONNECTED |
+| Cross-customer lookup (`SA-D4E5F6` requested by the *other* customer) | "couldn't find a booking with that reference on your account"; no leaked technician/time/name | VERIFIED_CONNECTED |
+| Provider failure / malformed JSON | labelled fallback with real options; never a silent simulated switch | VERIFIED_FIXTURE |
+
+**Two real defects were found only by running against a live model**, and fixed:
+
+1. The model answers in **prose** on the round after a tool call, ignoring
+   `response_format`. The old code discarded a *successful* tool call and fell back.
+   Now: after a tool round the tool list is withdrawn (`tool_choice: "none"`), JSON is
+   parsed tolerantly, and a valid prose answer is kept **with** its tool-derived
+   options (`constraints` stays empty — prose is never parsed into structure).
+2. Relaying prose introduced a safety hole: a model saying *"I booked it for you"*
+   would be shown as fact. A server-side **mutation-claim guard** now replaces any
+   such claim with a correction ("I cannot hold, book, charge or refund…nothing has
+   been changed") and sets `fallback_required`.
+
+Tests: `test_prose_answer_after_tool_call_is_kept_with_real_options`,
+`test_tools_are_withdrawn_after_a_tool_round`,
+`test_llm_mode_falls_back_on_malformed_output` (now asserts the claim is corrected).
+
 ## 3. Payment integrity (fixtures)
 
 `backend/tests/test_payment_integrity.py`, `test_hold_lifecycle.py`,

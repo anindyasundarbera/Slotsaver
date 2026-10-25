@@ -387,3 +387,52 @@ def test_preflight_network_success_reports_authenticated(monkeypatch, tmp_path, 
     assert "AUTHENTICATED" in output
     assert "SECRET-TOKEN" not in output
     assert code == 0
+
+
+# ---------------------------------------------------------------- base-url diagnostics
+@pytest.mark.parametrize(
+    "wrong,expect",
+    [
+        ("https://sandbox.paypal.com", "buyer-facing"),
+        ("https://www.sandbox.paypal.com", "checkout page"),
+        ("https://api-m.paypal.com", "LIVE"),
+        ("https://api.paypal.com", "LIVE"),
+    ],
+)
+def test_common_wrong_hosts_get_a_specific_message(monkeypatch, tmp_path, wrong, expect):
+    monkeypatch.setenv("PAYPAL_MODE", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "a")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "b")
+    monkeypatch.setenv("PAYPAL_BASE_URL", wrong)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
+    reset_settings_cache()
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings()
+    assert expect in str(excinfo.value)
+    reset_settings_cache()
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_base_url_is_allowed_and_means_default(monkeypatch, tmp_path, value):
+    monkeypatch.setenv("PAYPAL_MODE", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "a")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "b")
+    monkeypatch.setenv("PAYPAL_BASE_URL", value)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
+    reset_settings_cache()
+    settings = load_settings()
+    assert settings.paypal_base_url == SANDBOX_BASE_URL
+    reset_settings_cache()
+
+
+def test_legacy_api_alias_is_accepted_and_normalised(monkeypatch, tmp_path):
+    monkeypatch.setenv("PAYPAL_MODE", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "a")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "b")
+    monkeypatch.setenv("PAYPAL_BASE_URL", "https://api.sandbox.paypal.com")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
+    reset_settings_cache()
+    settings = load_settings()
+    # The client always talks to one canonical origin.
+    assert settings.paypal_base_url == SANDBOX_BASE_URL
+    reset_settings_cache()
