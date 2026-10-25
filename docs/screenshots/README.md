@@ -24,6 +24,7 @@ image.
 | `02-customer-validated-options.png` | Live assistant turn with 2 real backend options, the redacted tool trace, and the guided-search fallback |
 | `03-hold-created.png` | A held slot with its server-side expiry and the "no charge yet" state |
 | `04-checkout-paypal-sandbox.png` | Held booking plus a **real PayPal Sandbox order id** (`9AT9…`, `$75.00 USD`) awaiting buyer approval |
+| `09-confirmed-sandbox-payment.png` | **After a real sandbox capture** — `SA-LNRXNS` shows `Confirmed`, $75.00 USD, verified against PayPal (`COMPLETED`, `final_capture: true`) |
 | `05-owner-timeline.png` | Bryntum technician timeline (held / confirmed / affected), disruption form, payment exceptions |
 | `06-owner-analytics.png` | Revenue vs all captured money, per-service/per-technician buckets, and the underlying rows behind the totals |
 | `07-owner-disruption.png` | The reassignment workflow as the owner sees it |
@@ -31,10 +32,10 @@ image.
 
 ## What these images are not
 
-- `04` is a **created order awaiting approval** — not a captured payment. There is no
-  screenshot of a confirmed sandbox capture because buyer approval needs an interactive
-  sandbox personal-account login (recorded as NOT RUN in
-  [`../integration-status.md`](../integration-status.md)).
+- `04` is a **created order awaiting approval** — not a captured payment. Use `09` when
+  you need evidence of a confirmed capture: that booking was paid through the real
+  sandbox checkout and verified server-side, then re-confirmed directly against PayPal
+  (`COMPLETED`, `final_capture: true`).
 - The timeline carries a visible **Bryntum trial watermark**; the licence status is
   disclosed in [`../integration-status.md`](../integration-status.md).
 

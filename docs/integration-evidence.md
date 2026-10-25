@@ -20,44 +20,51 @@ fixtures. Nothing below claims a vendor integration from key presence.
 | **Real sandbox order creation** | UI → hold → *Pay with PayPal* | HTTP 201, `provider_mode: sandbox`, `amount_cents: 7500 USD`, real `https://www.sandbox.paypal.com/checkoutnow?token=...` approval URL | **VERIFIED_CONNECTED** (2026-10-26) |
 | **Order read back from PayPal** | `PayPalProvider.get_order(order_id)` | PayPal reports the same order id, state `CREATED`, `custom_id` set | **VERIFIED_CONNECTED** (2026-10-26) |
 | **Capture refused before buyer approval** | `POST /api/payments/{id}/capture` | HTTP **409** `ORDER_NOT_CAPTURABLE` — PayPal itself refuses; no booking confirmed | **VERIFIED_CONNECTED** (2026-10-26) |
-| **Browser buyer approval + confirmed capture** | checkout page opened at the password step for sandbox *personal* buyer `sb-jit2153271500@personal.example.com`; approval itself not completed | **NOT RUN (approval step only)** — a personal sandbox buyer account now exists and the real checkout page loads against a real order, but the password is held by the operator and was not available in-session. `scripts/e2e_sandbox.py` performs the remaining approval + capture automatically once `PAYPAL_SANDBOX_BUYER_EMAIL/_PASSWORD` are set. | NOT RUN |
+| **Browser buyer approval + confirmed capture** | real sandbox buyer approved the checkout page; then `POST /api/payments/{id}/capture` | **`200 reconciled_ok`, captured `7500 USD`, booking `confirmed` (`SA-LNRXNS`)**; PayPal itself reports order `COMPLETED`, capture `0JT80823PB148054X`, `$75.00 USD`, `final_capture: true`, with `custom_id` = our attempt id and `invoice_id` = our booking reference | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Capture is idempotent** | repeat the capture call | `200`, same `reconciled_ok`, `captured_amount_cents` still `7500` — no second charge | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Confirmed booking survives a restart** | stop uvicorn, restart, re-read payment + booking | `reconciled_ok`, `7500 USD`, booking `confirmed` `SA-LNRXNS` — read from SQLite, not memory | **VERIFIED_CONNECTED** (2026-10-26) |
 | **Live webhook delivery + verification** | needs a registered public HTTPS subscription | **NOT RUN** — no public listener or subscription id | NOT RUN |
 
 Tests covering the above: `backend/tests/test_paypal_integration.py` (39) and
 `backend/tests/test_paypal_adapter.py` (11).
 
-### 1b. Buyer approval reached the checkout page, then hit an account restriction
+### 1b. The buyer step initially failed on a seller-account currency mismatch
 
-The buyer step was driven far enough to prove the checkout page is real, and it surfaced
-a **configuration** defect rather than a code defect:
+Before the successful capture above, the buyer step failed with a PayPal error page. That
+failure and its resolution are recorded because it is the most likely thing to bite a
+team re-running this:
 
 | Step | Outcome | Class |
 |---|---|---|
-| Open the real approval URL in a browser | `https://www.sandbox.paypal.com/checkoutnow?token=…` loaded PayPal's live sign-in for the order | **VERIFIED_CONNECTED** (2026-10-26) |
-| Enter the sandbox **personal** buyer email | accepted; page advanced to the password step for `sb-…@personal.example.com` | **VERIFIED_CONNECTED** (2026-10-26) |
+| Open the real approval URL in a browser | `checkoutnow?token=…` loaded PayPal's live sign-in for the order | **VERIFIED_CONNECTED** |
+| Enter the sandbox **personal** buyer email | accepted; page advanced to the password step | **VERIFIED_CONNECTED** |
 | Buyer approves the payment | PayPal redirected to `checkoutweb/genericError?code=VU5TVVBQT1JURURfUEFZRUVfQ1VSUkVOQ1k` = **`UNSUPPORTED_PAYEE_CURRENCY`** | **BLOCKED (account config)** |
-| Capture after the failed approval | still `409 ORDER_NOT_CAPTURABLE`; attempt left `created`, booking `awaiting_payment` — no fabricated confirmation | VERIFIED_CONNECTED |
-| Abandon the failed attempt | `POST /payments/{id}/cancel` → `200`, attempt `cancelled`, booking `cancelled`, slot released | VERIFIED_CONNECTED |
+| Capture after the failed approval | still `409 ORDER_NOT_CAPTURABLE`; attempt `created`, booking `awaiting_payment` — no fabricated confirmation | VERIFIED_CONNECTED |
+| Abandon the failed attempt | `POST /payments/{id}/cancel` → `200`; attempt `cancelled`, booking `cancelled`, slot released | VERIFIED_CONNECTED |
+| **New US sandbox seller account, `PAYPAL_MERCHANT_ID` updated, backend restarted** | checkout rendered a real funding source and **`Complete Purchase`**; `UNSUPPORTED_PAYEE_CURRENCY` no longer occurred | **VERIFIED_CONNECTED** |
 
 **Root cause.** The order is created `intent: CAPTURE` in `USD` with
-`purchase_units[0].payee.merchant_id = PAYPAL_MERCHANT_ID`. The sandbox **business**
-account behind that merchant id does not support `USD` as a receiving currency, so
-PayPal accepts order creation (`201`) and refuses the order only when the buyer opens
-it. It is not detectable from the create-order response, which is exactly why it looked
-like a buyer-side failure.
+`purchase_units[0].payee.merchant_id = PAYPAL_MERCHANT_ID`. The *first* sandbox business
+account was India-based and did not support `USD` as a receiving currency, so PayPal
+accepted order creation (`201`) and refused the order only when the buyer opened it. It is
+not detectable from the create-order response, which is why it presented as a buyer-side
+failure.
 
-**Fix.** Set the seller account to `USD` (or use a US sandbox business account) and
-create a fresh order. Changing the *buyer* account cannot fix it, because the
-restriction is on the receiving side. Procedure:
+Contributing factor worth knowing: an India-context buyer session also forces an INR
+display/conversion path (`PayPal's conversion rate: 1 INR = …`), which makes the symptom
+look like a buyer problem. Clearing the session is not sufficient on its own — the
+receiving account has to accept `USD`.
+
+**Fix.** Point `PAYPAL_MERCHANT_ID` at a sandbox **business** account that settles in
+`USD`, then **restart the API** (settings are cached at import, so an edit to
+`backend/.env` alone does not take effect). Procedure:
 [`going-live-sandbox.md`](./going-live-sandbox.md) § Troubleshooting.
 
-**Guard added.** `python -m app.preflight` now prints a `paypal_payee_currency` line
-pairing the order currency with `PAYPAL_MERCHANT_ID`, so the mismatch is visible before
-a demo. The merchant id value is deliberately not printed; the existing
-`test_preflight_never_prints_secret_values` test enforces that.
-
-No sandbox capture is claimed. A failed approval leaves no payment record to lose and no
-booking confirmed.
+**Guard added.** `python -m app.preflight` prints a `paypal_payee_currency` line pairing
+the order currency with `PAYPAL_MERCHANT_ID`, so the mismatch is visible before a demo.
+The merchant id value is deliberately not printed; the existing
+`test_preflight_never_prints_secret_values` test caught an earlier version that leaked it
+and now guards the new check.
 
 ## 2. PayPal — protocol conformance (fixtures)
 

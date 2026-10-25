@@ -36,7 +36,7 @@ Owner column names the accountable role. Status uses the repo vocabulary:
 
 | Blocker | Impact | Mitigation in place |
 |---|---|---|
-| No interactive PayPal **buyer** approval | Live capture BLOCKED (order creation **is** verified connected) | Buyer account exists and the real checkout page reaches the password step. PayPal then returns `UNSUPPORTED_PAYEE_CURRENCY` — the sandbox *business* account must support `USD`. Fix in [`going-live-sandbox.md`](./going-live-sandbox.md); `preflight` now flags the pair. |
+| No interactive PayPal **buyer** approval | **Closed 2026-10-26** — real buyer approved, capture `reconciled_ok`, booking `confirmed` | Buyer account + a USD-settling seller account. The first seller was INR-based and produced `UNSUPPORTED_PAYEE_CURRENCY`; see [`going-live-sandbox.md`](./going-live-sandbox.md). |
 | PayPal webhook delivery needs a public HTTPS callback | Live webhook NOT RUN | Verification is implemented against PayPal's real endpoint and hermetic-tested (forged/replayed/duplicate). A tunnel plus registered subscription is all that remains. |
 | Bryntum Scheduler is commercial; only the **trial** build is public | Timeline shows an evaluation watermark | Trial is pinned and used as-is with a visible disclosure; a functional CSS fallback timeline ships so the demo cannot die. Licensed registry access is BLOCKED (401). |
 | AG Studio is commercial and not selected as the primary award target | Not integrated | Deliberately out of scope; Bryntum is the single sponsor target (rules allow one sponsor prize). |
