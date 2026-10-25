@@ -1,0 +1,331 @@
+<div class="stack">
+
+  @if (error(); as err) {
+    <ss-error-line [error]="err" />
+  }
+  @if (flash(); as message) {
+    <ss-notice tone="success">{{ message }}</ss-notice>
+  }
+  @if (busyLabel(); as label) {
+    <div class="notice notice-info"><span class="notice-icon" aria-hidden="true">i</span>
+      <ss-spinner [label]="label" /></div>
+  }
+
+  <div class="grid-2">
+    <!-- ============================================ conversation -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Describe the job</h2>
+        @if (reply()) {
+          <span class="badge" [class]="reply()!.mode === 'llm' ? 'badge-ai' : 'badge-simulated'">
+            {{ assistantModeLabel() }}
+          </span>
+        }
+      </div>
+
+      <div class="chat-log" aria-live="polite" aria-relevant="additions">
+        @for (entry of chat(); track $index) {
+          <div class="chat-bubble" [class]="entry.role === 'user' ? 'chat-user' : 'chat-assistant'">
+            {{ entry.text }}
+          </div>
+        }
+        @if (asking()) {
+          <div class="chat-bubble chat-assistant"><ss-spinner label="Thinking…" /></div>
+        }
+      </div>
+
+      <div class="field" style="margin-top: 16px">
+        <label for="request">Your request</label>
+        <textarea
+          id="request"
+          class="textarea"
+          [value]="draft()"
+          (input)="draft.set($any($event.target).value)"
+          (keydown.control.Enter)="ask()"
+          [attr.aria-describedby]="'request-hint'"
+          rows="3"
+        ></textarea>
+        <span id="request-hint" class="hint">Ctrl+Enter sends. The assistant can read
+          availability; it cannot hold, pay, or confirm.</span>
+      </div>
+
+      <div class="row" style="margin-top: 12px">
+        <button type="button" class="btn btn-primary" [disabled]="asking() || !draft().trim()" (click)="ask()">
+          @if (asking()) { <span class="spinner" aria-hidden="true"></span> }
+          Ask the assistant
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" (click)="useDemoRequest()">
+          Use the demo request
+        </button>
+      </div>
+
+      @if (fallbackReason(); as reason) {
+        <div class="notice notice-warn" style="margin-top: 16px" role="status">
+          <span class="notice-icon" aria-hidden="true">!</span>
+          <span>{{ reason }} The guided search below always works.</span>
+        </div>
+      }
+
+      @if (trace().length) {
+        <details class="trace" style="margin-top: 16px">
+          <summary>Tool activity (redacted) — {{ trace().length }} call(s)</summary>
+          <ul class="stack-sm small" style="margin: 8px 0 0; padding-left: 18px">
+            @for (item of trace(); track $index) {
+              <li>
+                <span class="mono">{{ item.tool }}</span> ·
+                <span [class]="item.ok ? 'muted' : 'muted'">{{ item.summary }}</span>
+                @if (!item.ok) { <span class="tag" style="color:#991b1b">failed</span> }
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    </section>
+
+    <!-- ============================================ guided search -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Guided search</h2>
+        <span class="small muted">Works without the assistant</span>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="search()" class="stack">
+        <div class="field">
+          <label for="service">Service</label>
+          <select id="service" class="select" formControlName="serviceCode">
+            @for (service of services(); track service.code) {
+              <option [value]="service.code">
+                {{ service.name }} · {{ money(service.price_cents, service.currency) }} ·
+                {{ service.duration_minutes }} min
+              </option>
+            }
+          </select>
+        </div>
+
+        <div class="grid-3">
+          <div class="field">
+            <label for="day">Day</label>
+            <input id="day" type="date" class="input" formControlName="day" />
+          </div>
+          <div class="field">
+            <label for="after">Earliest start</label>
+            <input id="after" type="time" class="input" formControlName="afterLocal" step="1800" />
+          </div>
+          <div class="field">
+            <label for="before">Must finish by</label>
+            <input id="before" type="time" class="input" formControlName="beforeLocal" step="1800" />
+          </div>
+        </div>
+
+        <div class="field" style="max-width: 220px">
+          <label for="budget">Budget (USD)</label>
+          <input id="budget" type="number" class="input" formControlName="budget" min="0" step="5" />
+        </div>
+
+        <div class="row">
+          <button type="submit" class="btn btn-secondary" [disabled]="searching() || form.invalid">
+            @if (searching()) { <span class="spinner" aria-hidden="true"></span> }
+            Search availability
+          </button>
+          <span class="small muted">{{ dayLabel(form.controls.day.value) }}</span>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <!-- ============================================ options -->
+  <section class="card" aria-labelledby="options-heading">
+    <div class="card-header">
+      <h2 id="options-heading">Available appointments</h2>
+      @if (options().length) {
+        <span class="small muted">Times shown in {{ session.config()?.timezone }}</span>
+      }
+    </div>
+
+    @if (optionsNote(); as note) {
+      <ss-notice tone="info">{{ note }}</ss-notice>
+    } @else if (!options().length) {
+      <p class="muted small">
+        Ask the assistant or run a guided search — options come from the backend, never
+        from the model.
+      </p>
+    }
+
+    @if (options().length) {
+      <div role="radiogroup" aria-label="Available appointments" class="stack-sm">
+        @for (option of options(); track option.option_id) {
+          <button
+            type="button"
+            role="radio"
+            class="option-card"
+            [attr.aria-checked]="selected()?.option_id === option.option_id"
+            [attr.aria-label]="option.technician_name + ', ' + option.start_local + ' to ' + option.end_local + ', ' + money(option.price_cents, option.currency)"
+            (click)="select(option)"
+          >
+            <div class="spread">
+              <span class="option-title">
+                <span class="tech-dot" [style.background]="option.technician_color" aria-hidden="true"></span>
+                {{ option.technician_name }}
+              </span>
+              <span class="tag">{{ option.service_name }}</span>
+            </div>
+            <div class="spread" style="margin-top: 6px">
+              <span class="small">
+                {{ option.start_local }} – {{ option.end_local }}
+                <span class="muted">({{ option.timezone_label }})</span>
+              </span>
+              <span class="small nowrap">
+                {{ money(option.price_cents, option.currency) }} ·
+                {{ option.duration_minutes }} min
+              </span>
+            </div>
+            <div class="row-tight" style="margin-top: 6px">
+              @if (option.within_budget) {
+                <span class="tag" style="color:#166534; border-color:#86efac; background:#dcfce7">Within budget</span>
+              } @else {
+                <span class="tag" style="color:#9a3412; border-color:#fdba74; background:#ffedd5">Over budget</span>
+              }
+            </div>
+          </button>
+        }
+      </div>
+
+      <div class="row" style="margin-top: 16px">
+        <button type="button" class="btn btn-primary" [disabled]="!selected() || holding()" (click)="placeHold()">
+          @if (holding()) { <span class="spinner" aria-hidden="true"></span> }
+          Hold this slot
+        </button>
+        <span class="small muted">
+          Holding reserves it for {{ session.config()?.hold_ttl_minutes }} minutes. No charge yet.
+        </span>
+      </div>
+    }
+  </section>
+
+  <!-- ============================================ hold + checkout -->
+  @if (hold(); as current) {
+    <section class="card" aria-labelledby="hold-heading">
+      <div class="card-header">
+        <h2 id="hold-heading">Your hold</h2>
+        <span class="status-chip" [class]="'tone-held'">Held</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="stack-sm">
+          <div class="row-tight">
+            <span class="tech-dot" [style.background]="'#2563eb'" aria-hidden="true"></span>
+            <strong>{{ current.technician_name }}</strong>
+          </div>
+          <span class="small">{{ current.service_name }}</span>
+          <span class="small">{{ current.start_local }} – {{ current.end_local }}
+            <span class="muted">({{ current.timezone_label }})</span></span>
+          <span class="small"><strong>{{ money(current.price_cents, current.currency) }}</strong></span>
+        </div>
+
+        <div class="stack-sm">
+          @if (!payment()) {
+            <div class="notice notice-warn" role="status" aria-live="polite">
+              <span class="notice-icon" aria-hidden="true">⏱</span>
+              <span>
+                Held for <strong class="mono">{{ clock(remaining()) }}</strong>.
+                Expires {{ current.expires_at }}.
+              </span>
+            </div>
+          }
+
+          @if (!checkout() && !payment()) {
+            <div class="row">
+              <button type="button" class="btn btn-primary" [disabled]="checkoutBusy()" (click)="startCheckout()">
+                @if (checkoutBusy()) { <span class="spinner" aria-hidden="true"></span> }
+                {{ simulated() ? 'Pay (simulated)' : 'Pay with PayPal' }}
+              </button>
+              <button type="button" class="btn btn-ghost" (click)="releaseHold()">Cancel hold</button>
+            </div>
+          }
+
+          @if (checkout(); as co) {
+            @if (simulated()) {
+              <div class="notice notice-warn">
+                <span class="notice-icon" aria-hidden="true">!</span>
+                <span><strong>Simulated checkout — no real money moves.</strong>
+                  This is offline rehearsal, not PayPal Sandbox evidence.</span>
+              </div>
+            } @else if (co.approve_url) {
+              <div class="notice notice-info">
+                <span class="notice-icon" aria-hidden="true">i</span>
+                <span>Approve the payment in the PayPal Sandbox tab that opened, then capture it here.
+                  <a [href]="co.approve_url" target="_blank" rel="noopener">Reopen PayPal</a>
+                </span>
+              </div>
+            }
+
+            @if (!payment()) {
+              <div class="row">
+                @if (simulated()) {
+                  <button type="button" class="btn btn-secondary" (click)="approveSimulated()">
+                    Approve (simulate buyer)
+                  </button>
+                }
+                <button type="button" class="btn btn-primary" [disabled]="paying()" (click)="capture()">
+                  @if (paying()) { <span class="spinner" aria-hidden="true"></span> }
+                  Capture payment
+                </button>
+                <button type="button" class="btn btn-ghost" [disabled]="paying()" (click)="declineSimulated()">
+                  Decline
+                </button>
+              </div>
+              <span class="hint">Order {{ co.simulated_token ?? '—' }} ·
+                {{ money(co.amount_cents, co.currency) }}</span>
+            }
+          }
+        </div>
+      </div>
+
+      @if (holdNotice(); as note) {
+        <div style="margin-top: 16px"><ss-notice tone="info">{{ note }}</ss-notice></div>
+      }
+    </section>
+  }
+
+  <!-- ============================================ result -->
+  @if (payment(); as result) {
+    <section class="card" aria-live="polite">
+      @if (result.booking_status === 'confirmed') {
+        <div class="stack-sm">
+          <div class="row">
+            <span class="status-chip tone-confirmed">Confirmed</span>
+            <h2>{{ simulated() ? 'Paid (simulated) — you are booked' : 'Paid via PayPal Sandbox — you are booked' }}</h2>
+          </div>
+          <p class="small muted">
+            Captured {{ money(result.captured_amount_cents ?? result.amount_cents, result.currency) }}.
+            Your booking is saved; refreshing the page will show the same status.
+          </p>
+          <div class="row">
+            <button type="button" class="btn btn-secondary btn-sm" (click)="refreshPayment()">Re-check status</button>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="resetPurchase()">Start another booking</button>
+          </div>
+        </div>
+      } @else if (result.booking_status === 'payment_exception') {
+        <ss-notice tone="exception" title="Payment recorded, but the slot was not available">
+          PayPal captured {{ money(result.captured_amount_cents ?? result.amount_cents, result.currency) }}
+          ({{ result.failure_reason }}). The appointment is <strong>not</strong> confirmed.
+          The owner has a visible task to resolve it; no refund is automated in this POC.
+        </ss-notice>
+      } @else {
+        <ss-notice tone="warn" title="No booking confirmed">
+          Payment status is <strong>{{ result.status }}</strong> and the booking is
+          <strong>{{ result.booking_status }}</strong>. Nothing was charged to a real account
+          @if (simulated()) { (simulated mode) }.
+        </ss-notice>
+      }
+    </section>
+  }
+
+  <!-- ============================================ bookings -->
+  <ss-bookings-panel
+    [bookings]="bookings()"
+    [busy]="bookingsBusy()"
+    (refresh)="reloadBookings()"
+    (changed)="onBookingChanged($event)"
+  />
+</div>

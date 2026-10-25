@@ -1,0 +1,42 @@
+<div class="app-shell">
+  <header class="topbar">
+    <a class="wordmark" routerLink="/">
+      <span class="wordmark-mark" aria-hidden="true">S</span>
+      SlotSaver
+    </a>
+
+    @if (session.config(); as config) {
+      <div class="topbar-meta">
+        <span class="nowrap">{{ config.business_name }}</span>
+        <span class="tag nowrap">{{ config.timezone }} · {{ config.timezone_label }}</span>
+        @if (config.paypal_mode === 'simulated') {
+          <span class="badge badge-simulated" title="No real money moves in this mode">
+            Offline rehearsal — simulated payments
+          </span>
+        } @else {
+          <span class="badge badge-sandbox">PayPal Sandbox</span>
+        }
+      </div>
+    }
+
+    <span class="topbar-spacer"></span>
+
+    @if (session.user(); as user) {
+      <div class="row-tight">
+        @if (session.isOwner()) {
+          <a class="btn btn-ghost btn-sm" routerLink="/owner">Owner</a>
+        } @else {
+          <a class="btn btn-ghost btn-sm" routerLink="/customer">Booking</a>
+        }
+        <span class="avatar" aria-hidden="true">{{ session.initials() }}</span>
+        <span class="small muted nowrap">{{ user.display_name }}</span>
+        <span class="tag nowrap">{{ user.role }}</span>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="signOut()">Sign out</button>
+      </div>
+    }
+  </header>
+
+  <main class="page">
+    <router-outlet />
+  </main>
+</div>

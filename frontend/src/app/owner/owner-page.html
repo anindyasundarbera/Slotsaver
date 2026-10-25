@@ -1,0 +1,144 @@
+<div class="stack">
+
+  @if (error(); as err) {
+    <ss-error-line [error]="err" />
+  }
+  @if (flash(); as message) {
+    <ss-notice tone="success">{{ message }}</ss-notice>
+  }
+
+  <div class="spread">
+    <div>
+      <h1>Owner workspace</h1>
+      <p class="small muted">
+        {{ session.config()?.business_name }} · demo day {{ session.config()?.demo_date }} ·
+        {{ session.config()?.timezone }}
+      </p>
+    </div>
+    <div class="row-tight">
+      @if (busy()) { <ss-spinner label="Syncing…" /> }
+      <button type="button" class="btn btn-secondary btn-sm" (click)="refreshAll()">
+        Refresh from server
+      </button>
+    </div>
+  </div>
+
+  <details class="trace">
+    <summary>How this works</summary>
+    <ul class="small muted" style="margin: 8px 0 0; padding-left: 18px">
+      <li>The backend owns every state transition; the UI only requests actions.</li>
+      <li>The assistant can read availability. It cannot hold, pay, confirm, or reschedule.</li>
+      <li>Bryntum visualises the schedule. Persisting a change is a backend decision.</li>
+      <li>Payment truth comes only from a verified PayPal capture or a verified webhook.</li>
+      <li>Analytics totals are computed from the same rows shown in the table below.</li>
+    </ul>
+  </details>
+
+  <ss-timeline
+    [data]="timeline()"
+    [timezone]="session.config()?.timezone ?? 'America/New_York'"
+    (shift)="shiftDay($event)"
+  />
+
+  <div class="grid-2">
+    <ss-disruption-panel
+      [technicians]="technicians()"
+      [bookings]="bookings()"
+      [timezone]="session.config()?.timezone ?? 'America/New_York'"
+      [demoDay]="session.config()?.demo_date ?? ''"
+      (done)="onDisruption($event)"
+    />
+
+    <section class="card" aria-labelledby="exceptions-heading">
+      <div class="card-header">
+        <h2 id="exceptions-heading">Payment exceptions</h2>
+        <span class="tag">{{ exceptions().length }}</span>
+      </div>
+
+      @if (!exceptions().length) {
+        <p class="small muted">No unresolved payment exceptions. Captured money matches bookings.</p>
+      } @else {
+        <div class="stack-sm">
+          @for (booking of exceptions(); track booking.id) {
+            <article class="card card-tight" style="box-shadow: none; border-color: #d8b4fe">
+              <div class="spread">
+                <div class="row-tight">
+                  <ss-status-chip status="payment_exception" labelOverride="Payment exception" />
+                  <strong class="mono">{{ booking.reference }}</strong>
+                </div>
+                <span class="small nowrap">{{ money(booking.price_cents) }}</span>
+              </div>
+              <p class="small muted" style="margin-top: 6px">
+                {{ booking.service_name }} · {{ booking.technician_name }} ·
+                {{ booking.start_local }} · {{ booking.customer_name }}
+              </p>
+              <p class="small" style="margin-top: 4px; color:#6b21a8">
+                {{ booking.exception_reason || 'Capture did not match a valid slot.' }}
+                Money was captured; the appointment is not confirmed.
+              </p>
+              <div class="row" style="margin-top: 10px">
+                <button
+                  type="button"
+                  class="btn btn-danger btn-sm"
+                  [disabled]="resolving() === booking.id"
+                  (click)="resolveException(booking, 'cancelled')"
+                >
+                  Cancel booking (refund manually)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  [disabled]="resolving() === booking.id"
+                  (click)="resolveException(booking, 'confirmed_manually')"
+                >
+                  Force-confirm
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  </div>
+
+  <ss-analytics-panel
+    [data]="analytics()"
+    [from]="from()"
+    [to]="to()"
+    (reload)="loadAnalytics()"
+    (rangeChange)="changeRange($event)"
+  />
+
+  <section class="card" aria-labelledby="audit-heading">
+    <div class="card-header">
+      <h2 id="audit-heading">Audit trail</h2>
+      <button type="button" class="btn btn-ghost btn-sm" (click)="loadAudit()">Reload</button>
+    </div>
+    @if (!audit().length) {
+      <p class="small muted">No audit events yet.</p>
+    } @else {
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">Action</th>
+              <th scope="col">Actor</th>
+              <th scope="col">Subject</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (entry of audit(); track $index) {
+              <tr>
+                <td class="mono nowrap">{{ entry.at }}</td>
+                <td>{{ entry.action }}</td>
+                <td>{{ entry.actor_role || 'system' }}</td>
+                <td class="mono">{{ entry.subject_type }} {{ entry.subject_id }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</div>

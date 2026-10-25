@@ -1,0 +1,25 @@
+node_modules/
+.venv/
+dist/
+.angular/
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.env.local
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+.DS_Store
+coverage/
+playwright-report/
+test-results/
+.vscode/
+!.vscode/extensions.json
+
+# local artifacts
+*.log
+*cookies*.txt
