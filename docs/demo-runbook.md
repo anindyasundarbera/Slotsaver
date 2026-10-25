@@ -18,10 +18,14 @@ Two separate deliverables:
 Then verify, in this order:
 
 1. `curl -s localhost:4200/api/health` → `"status":"ok"`.
-2. Open `http://localhost:4200` and confirm the badge says either
+2. `cd backend && ../.venv/bin/python -m app.preflight` → prints capability
+   statuses only. In sandbox mode add `--network` to prove app authentication
+   (it never creates or captures an order). Read the statuses out loud rather than
+   claiming more than they say.
+3. Open `http://localhost:4200` and confirm the badge says either
    **"Offline rehearsal — simulated payments"** or **"PayPal Sandbox"**.
    **Decide now which mode you are presenting.** The app never switches silently.
-3. Confirm the header shows `UTC-5` (November) — if it shows `UTC-4` the demo date
+4. Confirm the header shows `UTC-5` (November) — if it shows `UTC-4` the demo date
    drifted into daylight saving time; reset with `./scripts/reset-demo.sh`.
 
 ### Demo accounts
@@ -98,10 +102,25 @@ internal walkthrough.
 | Timezone shows `UTC-4` | Date drifted into DST | reset; the demo date pins November |
 | Payment step errors | Sandbox credentials/permissions | switch to the recorded clip; state that connected mode was blocked |
 
+## Repeatable API verification (optional, 30 seconds)
+
+```bash
+npx --yes newman run postman/SlotSaver.postman_collection.json \
+  -e postman/SlotSaver.local.postman_environment.json
+```
+
+27 requests, 53 assertions, including the negative cases. Run it after
+`./scripts/reset-demo.sh` for deterministic results — it assumes clean fixtures.
+
 ## What not to claim
 
 - Do not call the trial Bryntum build licensed.
 - Do not call a simulated payment a sandbox payment.
 - Do not call the POC production-ready; refunds, real money and multi-tenancy
   are explicitly out of scope.
-- Do not claim AG Studio, Astropods or APIMatic integrations — they are not built.
+- Do not claim AG Studio, Astropods, Channel3, Elastic, KERNEL, Render or Zapier
+  integrations — they are deliberately deferred and reported as such.
+- APIMatic **was** used, as a development-time coding-assistant plugin. Say exactly
+  that; do not imply a runtime APIMatic dependency.
+- Do not call a preflight `OK` a working payment. A filled variable is not a
+  verified integration.
