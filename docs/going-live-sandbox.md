@@ -135,6 +135,54 @@ signature verification.
 | `ORDER_NOT_CAPTURABLE` (422) | order already captured or voided | re-read the payment status instead of retrying |
 | Webhook `401` | signature invalid, or `PAYPAL_WEBHOOK_ID` is an event id | paste the **subscription** id |
 | Webhook `503` | intake disabled | set `PAYPAL_WEBHOOKS_ENABLED=true` |
+| **Checkout page shows "Things don't appear to be working at the moment"** with `code=VU5TVVBQT1JURURfUEFZRUVfQ1VSUkVOQ1k` | That code is base64 for **`UNSUPPORTED_PAYEE_CURRENCY`**: the seller account's primary currency does not match the `USD` the order was created in. The order is created fine (`201`) — it fails only when the buyer opens it, which is why it looks like a buyer problem. | See below. |
+
+### `UNSUPPORTED_PAYEE_CURRENCY`
+
+This is an **account** mismatch, not an application defect. Confirm the mechanism in
+seconds:
+
+```bash
+.venv/bin/python -c "
+import base64; print(base64.b64decode('VU5TVVBQT1JURURfUEFZRUVfQ1VSUkVOQ1k=').decode())"
+# UNSUPPORTED_PAYEE_CURRENCY
+```
+
+The order is created with `payee.merchant_id = PAYPAL_MERCHANT_ID` in `USD`. If the
+sandbox **business** account behind that merchant id settles in something else (INR is
+the usual cause, since sandbox business accounts created with country = India default
+to INR), PayPal accepts the order and then refuses it at the buyer step.
+
+Two supported fixes — pick one:
+
+1. **Preferred: make the seller account USD.** In
+   <https://developer.paypal.com/dashboard/accounts>, open the **Business** account whose
+   merchant id is `PAYPAL_MERCHANT_ID`, and add/set a **USD** currency balance (or simply
+   use a business account created with country = **US**). Then create a fresh order.
+2. **Match the app to the account.** Only if you have decided to demo in that currency:
+   set `CURRENCY` and the catalogue prices to the seller's primary currency. The seeded
+   prices are integer cents in `USD`, so this means re-seeding, and the POC's `$80`
+   budget story in the demo script changes with it.
+
+The buyer (personal) account currency does **not** fix this — the restriction is on the
+receiving side. Creating more personal accounts will not help.
+
+Quick check of which merchant id the app is sending:
+
+```bash
+.venv/bin/python -c "
+import sys; sys.path.insert(0,'backend')
+from app.config import get_settings; s=get_settings()
+print('merchant:', s.paypal_merchant_id, '| currency:', s.currency)"
+```
+
+A failed approval attempt is safe to abandon: cancel the checkout so the slot is released
+without confirming anything.
+
+```bash
+curl -X POST localhost:8000/api/payments/<attempt_id>/cancel \
+  -H "X-CSRF-Token: $CSRF" -b cookies.txt
+```
 
 ## Do not
 

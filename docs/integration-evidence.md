@@ -20,11 +20,44 @@ fixtures. Nothing below claims a vendor integration from key presence.
 | **Real sandbox order creation** | UI → hold → *Pay with PayPal* | HTTP 201, `provider_mode: sandbox`, `amount_cents: 7500 USD`, real `https://www.sandbox.paypal.com/checkoutnow?token=...` approval URL | **VERIFIED_CONNECTED** (2026-10-26) |
 | **Order read back from PayPal** | `PayPalProvider.get_order(order_id)` | PayPal reports the same order id, state `CREATED`, `custom_id` set | **VERIFIED_CONNECTED** (2026-10-26) |
 | **Capture refused before buyer approval** | `POST /api/payments/{id}/capture` | HTTP **409** `ORDER_NOT_CAPTURABLE` — PayPal itself refuses; no booking confirmed | **VERIFIED_CONNECTED** (2026-10-26) |
-| **Browser buyer approval + confirmed capture** | log in as a sandbox *personal* buyer, approve, then capture | **NOT RUN** — requires interactive sandbox buyer credentials, which were not provided | NOT RUN |
+| **Browser buyer approval + confirmed capture** | checkout page opened at the password step for sandbox *personal* buyer `sb-jit2153271500@personal.example.com`; approval itself not completed | **NOT RUN (approval step only)** — a personal sandbox buyer account now exists and the real checkout page loads against a real order, but the password is held by the operator and was not available in-session. `scripts/e2e_sandbox.py` performs the remaining approval + capture automatically once `PAYPAL_SANDBOX_BUYER_EMAIL/_PASSWORD` are set. | NOT RUN |
 | **Live webhook delivery + verification** | needs a registered public HTTPS subscription | **NOT RUN** — no public listener or subscription id | NOT RUN |
 
-Tests covering the above: `backend/tests/test_paypal_integration.py` (28) and
+Tests covering the above: `backend/tests/test_paypal_integration.py` (39) and
 `backend/tests/test_paypal_adapter.py` (11).
+
+### 1b. Buyer approval reached the checkout page, then hit an account restriction
+
+The buyer step was driven far enough to prove the checkout page is real, and it surfaced
+a **configuration** defect rather than a code defect:
+
+| Step | Outcome | Class |
+|---|---|---|
+| Open the real approval URL in a browser | `https://www.sandbox.paypal.com/checkoutnow?token=…` loaded PayPal's live sign-in for the order | **VERIFIED_CONNECTED** (2026-10-26) |
+| Enter the sandbox **personal** buyer email | accepted; page advanced to the password step for `sb-…@personal.example.com` | **VERIFIED_CONNECTED** (2026-10-26) |
+| Buyer approves the payment | PayPal redirected to `checkoutweb/genericError?code=VU5TVVBQT1JURURfUEFZRUVfQ1VSUkVOQ1k` = **`UNSUPPORTED_PAYEE_CURRENCY`** | **BLOCKED (account config)** |
+| Capture after the failed approval | still `409 ORDER_NOT_CAPTURABLE`; attempt left `created`, booking `awaiting_payment` — no fabricated confirmation | VERIFIED_CONNECTED |
+| Abandon the failed attempt | `POST /payments/{id}/cancel` → `200`, attempt `cancelled`, booking `cancelled`, slot released | VERIFIED_CONNECTED |
+
+**Root cause.** The order is created `intent: CAPTURE` in `USD` with
+`purchase_units[0].payee.merchant_id = PAYPAL_MERCHANT_ID`. The sandbox **business**
+account behind that merchant id does not support `USD` as a receiving currency, so
+PayPal accepts order creation (`201`) and refuses the order only when the buyer opens
+it. It is not detectable from the create-order response, which is exactly why it looked
+like a buyer-side failure.
+
+**Fix.** Set the seller account to `USD` (or use a US sandbox business account) and
+create a fresh order. Changing the *buyer* account cannot fix it, because the
+restriction is on the receiving side. Procedure:
+[`going-live-sandbox.md`](./going-live-sandbox.md) § Troubleshooting.
+
+**Guard added.** `python -m app.preflight` now prints a `paypal_payee_currency` line
+pairing the order currency with `PAYPAL_MERCHANT_ID`, so the mismatch is visible before
+a demo. The merchant id value is deliberately not printed; the existing
+`test_preflight_never_prints_secret_values` test enforces that.
+
+No sandbox capture is claimed. A failed approval leaves no payment record to lose and no
+booking confirmed.
 
 ## 2. PayPal — protocol conformance (fixtures)
 

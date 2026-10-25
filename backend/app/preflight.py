@@ -84,6 +84,20 @@ def static_checks(settings: Settings) -> list[Check]:
             "" if _configured(settings.paypal_merchant_id) else "PAYPAL_MERCHANT_ID",
         )
     )
+    # The buyer-step failure UNSUPPORTED_PAYEE_CURRENCY cannot be detected from the
+    # create-order response, so surface the pair the operator must keep consistent:
+    # the seller account behind PAYPAL_MERCHANT_ID must settle in `currency`.
+    # The merchant id itself is never printed (preflight output must stay value-free).
+    if settings.paypal_mode == "sandbox" and _configured(settings.paypal_merchant_id):
+        checks.append(
+            Check(
+                "paypal_payee_currency",
+                OK,
+                f"orders are created in {settings.currency}; the sandbox BUSINESS account behind "
+                f"PAYPAL_MERCHANT_ID must support {settings.currency}, or the buyer page fails with "
+                "UNSUPPORTED_PAYEE_CURRENCY",
+            )
+        )
 
     if settings.paypal_webhooks_enabled:
         checks.append(
