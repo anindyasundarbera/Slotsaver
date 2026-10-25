@@ -280,13 +280,13 @@ def test_preflight_never_prints_secret_values(monkeypatch, tmp_path, capsys):
         "PAYPAL_MODE": "sandbox",
         "PAYPAL_CLIENT_ID": "AbC123SecretLookingValue",
         "PAYPAL_CLIENT_SECRET": "SuperSecret987",
-        "PAYPAL_MERCHANT_ID": "MERCHANTXYZ",
+        "PAYPAL_MERCHANT_ID": "ABCDEFGHIJKLM",
         "PAYPAL_WEBHOOKS_ENABLED": "true",
         "PAYPAL_WEBHOOK_ID": "WH-ABC-123",
     }
     code, output = _preflight(monkeypatch, tmp_path, capsys, secrets)
     assert code == 0
-    for value in ("AbC123SecretLookingValue", "SuperSecret987", "MERCHANTXYZ", "WH-ABC-123"):
+    for value in ("AbC123SecretLookingValue", "SuperSecret987", "ABCDEFGHIJKLM", "WH-ABC-123"):
         assert value not in output, f"preflight leaked {value}"
 
 
@@ -380,7 +380,7 @@ def test_preflight_network_success_reports_authenticated(monkeypatch, tmp_path, 
             "PAYPAL_MODE": "sandbox",
             "PAYPAL_CLIENT_ID": "IdValue123",
             "PAYPAL_CLIENT_SECRET": "SecValue456",
-            "PAYPAL_MERCHANT_ID": "MERCHANT1",
+            "PAYPAL_MERCHANT_ID": "ABCDEFGHIJKLM",
         },
         args=["--network"],
     )
@@ -436,3 +436,49 @@ def test_legacy_api_alias_is_accepted_and_normalised(monkeypatch, tmp_path):
     # The client always talks to one canonical origin.
     assert settings.paypal_base_url == SANDBOX_BASE_URL
     reset_settings_cache()
+
+
+# ---------------------------------------------------------------- merchant id shape
+def test_secret_pasted_as_merchant_id_is_rejected(monkeypatch, tmp_path):
+    """A client secret pasted into PAYPAL_MERCHANT_ID made every order 400/503."""
+    monkeypatch.setenv("PAYPAL_MODE", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "a")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "b")
+    monkeypatch.setenv("PAYPAL_MERCHANT_ID", "E" + "x" * 79)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
+    reset_settings_cache()
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings()
+    message = str(excinfo.value)
+    assert "PAYPAL_MERCHANT_ID" in message
+    assert "13" in message
+    # The value itself must never appear in the error.
+    assert "Exxxx" not in message
+    reset_settings_cache()
+
+
+def test_valid_merchant_id_shape_is_accepted(monkeypatch, tmp_path):
+    monkeypatch.setenv("PAYPAL_MODE", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "a")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "b")
+    monkeypatch.setenv("PAYPAL_MERCHANT_ID", "ABCDEFGHIJKLM")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/x.db")
+    reset_settings_cache()
+    assert load_settings().paypal_merchant_id == "ABCDEFGHIJKLM"
+    reset_settings_cache()
+
+
+def test_blank_merchant_id_skips_the_payee_check():
+    assert _sandbox(paypal_merchant_id="").paypal_merchant_id == ""
+
+
+def test_order_without_payee_block_is_accepted_by_paypal_shape():
+    """When no merchant id is configured, no payee block is sent at all."""
+    transport = RecordingTransport(_router({"/v2/checkout/orders": httpx.Response(201, json=ORDER)}))
+    provider = PayPalProvider(_sandbox(paypal_merchant_id=""), transport=transport)
+    provider.create_order(
+        attempt_id="pay_1", amount_cents=7500, currency="USD",
+        description="d", reference="SA-1", idempotency_key="k-mp",
+    )
+    body = json.loads([r for r in transport.requests if r.url.path == "/v2/checkout/orders"][0].content)
+    assert "payee" not in body["purchase_units"][0]

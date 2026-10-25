@@ -65,6 +65,15 @@ slot, **Pay with PayPal** (a real sandbox approve link opens — log in as the
 
 The badge in the header must read **PayPal Sandbox**, not "Offline rehearsal".
 
+## Common configuration mistakes (now detected at startup)
+
+| Mistake | What happens |
+|---|---|
+| `PAYPAL_BASE_URL=https://sandbox.paypal.com` | `ConfigError`: that is the **buyer-facing web host**, not the API. Leave blank or use `https://api-m.sandbox.paypal.com` |
+| `PAYPAL_BASE_URL=https://api-m.paypal.com` | `ConfigError`: that is **LIVE** PayPal; this POC refuses live mode |
+| Client **secret** pasted into `PAYPAL_MERCHANT_ID` | `ConfigError`: a merchant id is 13 uppercase alphanumerics. A wrong value previously made every order fail with 400 → `503`. Leave blank to skip the payee check |
+| `PAYPAL_MODE` still `simulated` | App runs offline; the badge says so |
+
 ## 4b. Verified so far (2026-10-26), and what remains
 
 With the configured credentials, these steps are **confirmed against real PayPal**:
@@ -74,6 +83,7 @@ With the configured credentials, these steps are **confirmed against real PayPal
 | `preflight --network` | `AUTHENTICATED (http 200, 26 scope(s))` |
 | Order creation via the UI | 201, `provider_mode: sandbox`, real `sandbox.paypal.com` approval URL |
 | Order read back | PayPal reports the same id in state `CREATED` with our `custom_id` |
+| Order creation after fixing the merchant id | 201 with live order `8NS97838AK251145S`, shown in the UI as "PayPal order …" |
 | Capture before approval | 409 `ORDER_NOT_CAPTURABLE` — refused by PayPal, no booking confirmed |
 
 Still **not run**, because they need interactive sandbox-buyer credentials:

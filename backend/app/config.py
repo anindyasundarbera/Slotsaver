@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from datetime import date, datetime, time
@@ -13,6 +14,11 @@ ENV_FILE = BACKEND_DIR / ".env"
 SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
 # Documented API host plus its legacy alias. Both are the *API*; the bare
 # `sandbox.paypal.com` is the buyer-facing web host and is not an API origin.
+# A PayPal merchant/payee id is 13 uppercase alphanumerics (e.g. ABCDEFGHIJKLM).
+# Credentials and API keys are much longer and contain '-' or '_', so a
+# wrong paste is detectable without ever printing the value.
+MERCHANT_ID_PATTERN = re.compile(r"[A-Z0-9]{13}")
+
 ALLOWED_PAYPAL_ORIGINS = {
     SANDBOX_BASE_URL,
     "https://api.sandbox.paypal.com",
@@ -221,6 +227,15 @@ def load_settings(*, strict: bool = True) -> Settings:
     # placeholders and never fall back to a published literal: if the operator
     # did not configure one, use a random per-process value so no third party can
     # mint a "verified" capture. (Alert: independent security review, finding 1.)
+    if settings.paypal_mode == "sandbox" and settings.paypal_merchant_id:
+        if not MERCHANT_ID_PATTERN.fullmatch(settings.paypal_merchant_id):
+            raise ConfigError(
+                "PAYPAL_MERCHANT_ID does not look like a merchant id. It should be 13 "
+                "uppercase letters/digits (from the sandbox BUSINESS account), not a "
+                f"client id or secret (length seen: {len(settings.paypal_merchant_id)}, "
+                f"expected 13). Leave it blank to skip the payee check."
+            )
+
     if settings.paypal_mode == "simulated":
         if is_placeholder(settings.simulated_webhook_secret):
             import secrets as _secrets
