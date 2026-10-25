@@ -89,6 +89,20 @@ the SDK itself is not a dependency. No APIMatic runtime key exists or is needed.
 | Repeatable from a clean state | `POST /api/owner/demo/reset`, then re-run | same result, 0 failures | VERIFIED_CONNECTED |
 | Collection is committed | `postman/SlotSaver.postman_collection.json` + `SlotSaver.local.postman_environment.json` | yes | IMPLEMENTED |
 
+**Operating notes (learned by running it repeatedly):**
+
+- Reset the fixtures first (`./scripts/reset-demo.sh` + restart, or
+  `POST /api/owner/demo/reset`). Each full run consumes the demo day's capacity, so
+  a second run without a reset correctly reports *"has bookable capacity"* as
+  failed. The collection then short-circuits the dependent requests so one
+  precondition failure does not masquerade as twenty defects.
+- Login is rate-limited at 10/min/IP. Running the collection more than about four
+  times in a minute engages the limiter; the collection then fails with a single
+  labelled assertion (`login rate limited - wait 60s`) and stops. That is the
+  control working, not a defect.
+- Verified: clean state → **27 requests / 53 assertions / 0 failures**; capacity
+  exhausted → **one** clear failure; rate limited → **one** clear failure.
+
 Coverage: health/config/services/technicians, unauthenticated refusal, login,
 assistant options (budget honoured), hold, **duplicate hold → 409**, checkout,
 **capture-before-approval → 409**, approve, capture, **duplicate capture idempotent**,
