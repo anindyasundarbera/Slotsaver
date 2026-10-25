@@ -86,6 +86,9 @@ With the configured credentials, these steps are **confirmed against real PayPal
 | Order creation after fixing the merchant id | 201 with live order `8NS97838AK251145S`, shown in the UI as "PayPal order …" |
 | Capture before approval | 409 `ORDER_NOT_CAPTURABLE` — refused by PayPal, no booking confirmed |
 
+Postman verification passes in **both** modes (simulated 27/53/0, sandbox 25/45/0);
+the collection reads `paypal_mode` and asserts the correct outcome for each.
+
 Still **not run**, because they need interactive sandbox-buyer credentials:
 
 1. Log in as the sandbox **personal** buyer on the approval URL and approve.
