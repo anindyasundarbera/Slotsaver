@@ -9,7 +9,7 @@ cd backend && ../.venv/bin/python -m pytest -q
 ```
 
 ```
-107 passed in 9.18s
+109 passed in 10.17s
 ```
 
 Everything below runs with **no network access** and no real credentials.
@@ -24,8 +24,23 @@ Everything below runs with **no network access** and no real credentials.
 | `tests/test_assistant_abuse.py` | 15 | 5 injection payloads create no payment attempt and no booking, and every tool call stays inside the allow-list; cross-customer lookup leaks nothing; offered options never overlap an active reservation; missing service yields a clarifying question; no availability is reported honestly; the demo sentence parses to the right constraints; 5 malformed model outputs rejected by `_strict_json`; provider outage → labelled fallback **with real options**; malformed LLM output → fallback; assistant endpoint rate-limited (429). |
 | `tests/test_durability.py` | 4 | State survives a full app restart (engines disposed, caches reset, same SQLite file) and is verified by reading the DB directly; analytics totals equal the sum of the rows they summarise, and bucket totals match the headline; timeline and analytics agree after a mutation; demo reset is owner-only and restores fixtures. |
 | `tests/test_paypal_integration.py` | 28 | Operation-key separation, approved sandbox origin enforcement, experience-context vs application-context order body, webhook enable gate returning 503, and preflight output never containing a secret value, prefix or response body. |
+| `tests/test_concurrency_http.py` | 2 | **Real parallel HTTP race:** two independent sessions released by a thread barrier against one slot → exactly `[201, 409]`, the loser gets `SLOT_UNAVAILABLE` and holds no booking, and the database shows exactly one active cell. Plus a direct test that the **partial unique index itself** rejects a duplicate claim and still allows re-claiming a released cell. |
 | `tests/test_regressions.py` | 9 | Unaligned `start_utc` rejected; retry after a failed attempt; late capture releases capacity instead of orphaning it; force-confirm must win the capacity claim; a losing racer leaves no dangling cells. |
 | `tests/test_paypal_adapter.py` | 11 | Real adapter request shape: `/v2/checkout/orders` with server-derived `75.00`, `PayPal-Request-Id`, `custom_id`/`invoice_id`, merchant payee, and **no client-supplied price**; capture parsing of the settled amount; 422 → `ORDER_NOT_CAPTURABLE`; transport failure → ambiguous capture flag; bad credentials → provider unavailable; webhook verification requires all five headers and calls PayPal's endpoint with the right body; `FAILURE` is rejected; `PAYPAL_MODE=live` raises at config load; sandbox without credentials raises; provider selection respects mode. |
+
+### Proving the concurrency test is real
+
+A test that passes for the wrong reason is worse than no test. Both concurrency
+tests were **mutation-checked**:
+
+1. `test_capacity_index_itself_rejects_a_duplicate_claim` was added because the
+   end-to-end HTTP race can be satisfied by the service layer's pre-check rather
+   than by the index.
+2. Temporarily flipping the index to `unique=False` in `app/models.py` makes
+   `test_capacity_index_itself_rejects_a_duplicate_claim` **fail**, and restoring
+   it makes it pass. `app/models.py` is unmodified in the committed tree.
+
+The HTTP race test is stable across five consecutive runs.
 
 ### Notes on test design
 
@@ -34,10 +49,10 @@ Everything below runs with **no network access** and no real credentials.
   request, not just on the response body.
 - The rate-limiter fixture resets process-global buckets between tests; without it
   the limiter (correctly) leaks across tests.
-- Concurrency is proven through the database constraint directly
-  (`pytest.raises(Conflict)` after a committed competing claim), which is the same
-  path two real requests take. A threaded HTTP race was not run: SQLite serialises
-  writers, so it would test the lock, not the invariant.
+- Concurrency is proven three ways: the database constraint directly
+  (`pytest.raises(Conflict)` after a committed competing claim), a real threaded
+  HTTP race between two sessions, and a direct index assertion that survives
+  removal of the service-layer pre-check.
 
 ## Frontend
 

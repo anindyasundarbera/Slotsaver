@@ -45,7 +45,8 @@ Hermetic tests assert the real wire contract against a stubbed transport:
 `backend/tests/test_payment_integrity.py`, `test_hold_lifecycle.py`,
 `test_regressions.py`:
 
-- two customers race one slot → exactly one winner (DB constraint decides)
+- two customers race one slot → exactly one winner, proven three ways: service-level,
+  a **real threaded HTTP race**, and a direct index assertion that is mutation-checked
 - **unaligned `start_utc` is rejected** (regression: it bypassed the index)
 - duplicate capture ×3 → one attempt, one captured amount
 - duplicate checkout → same attempt; a *failed* attempt no longer blocks a retry

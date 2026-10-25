@@ -113,7 +113,8 @@ cd backend && ../.venv/bin/python -m pytest -q
 | Suite | Covers |
 |---|---|
 | `test_happy_path.py` | Request → options → hold → checkout → verified capture → persistent confirmation (and after a refresh) |
-| `test_hold_lifecycle.py` | Cancelled checkout does not confirm; expiry releases capacity; **race for one slot**; offset overlap rejected |
+| `test_hold_lifecycle.py` | Cancelled checkout does not confirm; expiry releases capacity; offset overlap rejected |
+| `test_concurrency_http.py` | **Real parallel HTTP race** between two sessions for one slot → exactly one winner; the partial unique index itself rejects a duplicate claim (mutation-checked) |
 | `test_payment_integrity.py` | Amount/currency tampering, foreign order, duplicate capture, duplicate checkout, capture-after-expiry, forged webhook, replayed webhook, new-id replay, unknown order, unapproved order |
 | `test_authorization.py` | Cross-customer 404s, role separation, CSRF, cross-origin writes, `extra="forbid"`, naive datetimes, business hours, skill match |
 | `test_reassignment.py` | Disruption preserves the paid booking; approval persists atomically; decline; foreign approval blocked; un-offered technician; **unresolved when no alternative exists** |
