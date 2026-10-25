@@ -30,3 +30,25 @@ first thing to do before recording the submission video.
 The one sponsor target is **Bryntum**, whose timeline is genuinely load-bearing in
 the owner experience (it is how the presenter *shows* holds, confirmed bookings and
 disruptions). Its trial watermark is disclosed on screen rather than hidden.
+
+
+---
+
+## Continuation update — 2026-10-26
+
+Selected slice implemented after reading the sponsor handbook. Full detail in
+[`integration-gap-matrix.md`](./integration-gap-matrix.md),
+[`integration-config.md`](./integration-config.md) and
+[`integration-evidence.md`](./integration-evidence.md).
+
+| Integration | Change in this continuation | New status |
+|---|---|---|
+| **PayPal** | Configurable-but-validated sandbox base URL; separate create/capture idempotency keys; `payment_source.paypal.experience_context` when return/cancel URLs are set; webhook intake behind `PAYPAL_WEBHOOKS_ENABLED` (disabled ⇒ `503 WEBHOOKS_DISABLED`, never a bypass) | IMPLEMENTED + VERIFIED_FIXTURE; connected journey still **NOT RUN** (no credentials) |
+| **PayPal** | New `python -m app.preflight` (`--network`, `--json`) reporting capability status and missing variable *names* only | IMPLEMENTED + VERIFIED_FIXTURE |
+| **APIMatic** | Installer doctor + installed-plugin listing run; plugin skills loaded and used for PayPal grounding | **VERIFIED_CONNECTED** (development-time) |
+| **Postman** | 27-request / 53-assertion collection, committed and executed twice (clean and after reset), 0 failures | **VERIFIED_CONNECTED** (local stack) |
+| **Bryntum** | Unchanged (trial build, disclosed); preflight reports its flag | IMPLEMENTED on trial; licensed access **BLOCKED** (HTTP 401) |
+| AG Studio, Astropods, Channel3, Elastic, KERNEL, Render, Zapier | Not implemented; reported as `DEFERRED` by preflight | **DEFERRED** |
+
+Three HIGH and one LOW security findings from the independent review were fixed and
+regression-tested; see [`security-review.md`](./security-review.md).

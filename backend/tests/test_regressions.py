@@ -195,3 +195,113 @@ def test_concurrent_claims_survive_a_rollback_without_dangling_cells(db, setting
     ).scalars().all()
     assert len(active) == 1, "exactly one winner must own this cell"
     assert active[0].owner_id == first.id
+
+
+def test_unaligned_start_is_rejected(client, login):
+    """Security review finding 2: off-grid starts would bypass the capacity index."""
+    from datetime import timezone
+
+    login("maya@example.com")
+    headers = _headers(client)
+    aligned = client.post(
+        "/api/holds",
+        json={
+            "service_code": "washer-repair",
+            "technician_id": "tech_ana",
+            "start_utc": "2026-11-04T14:00:00Z",
+        },
+        headers=headers,
+    )
+    assert aligned.status_code == 201, aligned.text
+
+    unaligned = client.post(
+        "/api/holds",
+        json={
+            "service_code": "washer-repair",
+            "technician_id": "tech_ana",
+            "start_utc": "2026-11-04T14:07:00Z",
+        },
+        headers=headers,
+    )
+    assert unaligned.status_code == 422
+    assert unaligned.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_failed_attempt_does_not_block_a_retry(client, login, db):
+    """Security review: a closed attempt raised a 500 on UNIQUE idempotency_key."""
+    login("maya@example.com")
+    headers = _headers(client)
+    hold, checkout = _hold_and_checkout(client, headers)
+
+    attempt = db.get(PaymentAttempt, checkout["attempt_id"])
+    attempt.status = "failed"
+    db.commit()
+
+    retry = client.post(f"/api/holds/{hold['id']}/checkout", headers=headers)
+    assert retry.status_code == 201
+    assert retry.json()["attempt_id"] != checkout["attempt_id"]
+
+
+def test_denied_then_completed_does_not_orphan_capacity(client, login, db):
+    """Security review finding 3: late capture left cells owned by a cancelled booking."""
+    import hashlib
+    import hmac
+    import json
+
+    login("maya@example.com")
+    headers = _headers(client)
+    hold, checkout = _hold_and_checkout(client, headers)
+    client.post(f"/api/simulated-checkout/{checkout['simulated_token']}/approve", headers=headers)
+    order = checkout["simulated_token"]
+    key = b"test-only-hmac-key-not-a-real-secret"
+
+    def deliver(event: dict) -> int:
+        body = json.dumps(event).encode()
+        sig = hmac.new(key, body, hashlib.sha256).hexdigest()
+        return client.post(
+            "/api/webhooks/paypal",
+            content=body,
+            headers={"Content-Type": "application/json", "paypal-transmission-sig": sig},
+        ).status_code
+
+    denied = deliver(
+        {
+            "id": "WH-DENY-1",
+            "event_type": "PAYMENT.CAPTURE.DENIED",
+            "resource": {
+                "id": "CAP-D",
+                "status": "DENIED",
+                "amount": {"value": "65.00", "currency_code": "USD"},
+                "supplementary_data": {"related_ids": {"order_id": order}},
+            },
+        }
+    )
+    assert denied == 200
+    completed = deliver(
+        {
+            "id": "WH-LATE-1",
+            "event_type": "PAYMENT.CAPTURE.COMPLETED",
+            "resource": {
+                "id": "CAP-C",
+                "status": "COMPLETED",
+                "amount": {"value": "65.00", "currency_code": "USD"},
+                "custom_id": checkout["attempt_id"],
+                "supplementary_data": {"related_ids": {"order_id": order}},
+            },
+        }
+    )
+    assert completed == 200
+
+    db.expire_all()
+    booking = db.get(Booking, checkout["booking_id"])
+    assert booking.status != BookingStatus.confirmed.value
+    assert booking.needs_attention is True
+
+    cells = db.execute(
+        select(SlotBlock).where(
+            SlotBlock.technician_id == booking.technician_id,
+            SlotBlock.slot_start_utc == booking.start_utc,
+        )
+    ).scalars().all()
+    assert cells, "the cell row must still exist"
+    assert all(c.active == 0 for c in cells), "capacity must be released, never orphaned"

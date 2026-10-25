@@ -47,6 +47,7 @@ curl -s localhost:4200/api/health          # same, through the dev-server proxy
 
 ```bash
 ./scripts/test.sh            # backend tests + frontend typecheck + production build
+cd backend && ../.venv/bin/python -m app.preflight   # capability report
 ./scripts/reset-demo.sh      # rebuild only the synthetic demo database
 ```
 
@@ -119,6 +120,8 @@ cd backend && ../.venv/bin/python -m pytest -q
 | `test_assistant_abuse.py` | 5 prompt-injection payloads, cross-customer lookup, no invented availability, malformed model output, provider outage, rate limit |
 | `test_durability.py` | App restart preserves state; analytics equal the rows they summarise; timeline/analytics agree after mutation; owner-only reset |
 | `test_paypal_adapter.py` | Real PayPal request shape, idempotency header, capture parsing, error mapping, webhook verification, live-mode refusal |
+| `test_paypal_integration.py` | Operation-key separation, approved base origin, experience-context order body, webhook enable gate, and preflight secret hygiene |
+| `test_regressions.py` | Unaligned-start rejection, retry after a failed attempt, late-capture capacity release, force-confirm capacity claim, rollback safety |
 
 Exact commands, counts and skipped checks: [`docs/test-evidence.md`](docs/test-evidence.md).
 
@@ -128,11 +131,12 @@ Exact commands, counts and skipped checks: [`docs/test-evidence.md`](docs/test-e
 
 | Integration | Status |
 |---|---|
-| **PayPal Orders v2 + Webhooks** | **IMPLEMENTED**, hermetically **VERIFIED**, live sandbox **NOT RUN** (no credentials in this environment) |
+| **PayPal Orders v2 + Webhooks** | **IMPLEMENTED**, hermetically **VERIFIED**, live sandbox **NOT RUN** (no credentials in this environment). `python -m app.preflight` reports readiness without leaking secrets |
+| **APIMatic Context Plugin** | **VERIFIED_CONNECTED** as a development tool (installer doctor + plugin loaded and used); not a runtime dependency |
+| **Postman** | **VERIFIED_CONNECTED** — committed 27-request / 53-assertion collection, run twice with 0 failures |
 | **Bryntum Scheduler** | **IMPLEMENTED** on the public **trial** build (watermarked, evaluation-only). Licensed registry access **BLOCKED** (HTTP 401). A functional fallback timeline ships so the demo cannot fail |
 | AG Studio | **NOT INTEGRATED** — commercial, and the rules allow only one sponsor prize |
 | Astropods | **NOT INTEGRATED** — not selected as the runtime (prompt requires one) |
-| APIMatic Context Plugin | **NOT RUN** — not claimed |
 | Channel3 | **OUT OF SCOPE** by design |
 
 Full matrix with evidence and limits: [`docs/integration-status.md`](docs/integration-status.md) ·
@@ -150,6 +154,9 @@ Full matrix with evidence and limits: [`docs/integration-status.md`](docs/integr
 | [`docs/security-review.md`](docs/security-review.md) | Independent review findings and fixes |
 | [`docs/test-evidence.md`](docs/test-evidence.md) | Commands, outcomes, skips |
 | [`docs/integration-status.md`](docs/integration-status.md) | Sponsor matrix, LIVE/SIMULATED/BLOCKED |
+| [`docs/integration-gap-matrix.md`](docs/integration-gap-matrix.md) | Gap analysis per sponsor with decisions |
+| [`docs/integration-config.md`](docs/integration-config.md) | Env-name mapping, public/server boundary, preflight |
+| [`docs/integration-evidence.md`](docs/integration-evidence.md) | Exact commands and connected evidence |
 | [`docs/vendor-verification.md`](docs/vendor-verification.md) | Rules and vendor claims with sources |
 | [`docs/demo-runbook.md`](docs/demo-runbook.md) | 5-minute walkthrough + **2:45 submission cut** + recovery card |
 | [`docs/deployment.md`](docs/deployment.md) | Postgres, Render caveats, prepared-but-unverified config |

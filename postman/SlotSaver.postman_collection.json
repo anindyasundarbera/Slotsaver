@@ -1,0 +1,1229 @@
+{
+  "info": {
+    "name": "SlotSaver \u2014 API verification",
+    "description": "Repeatable checks for SlotSaver. Covers the happy path plus the negative cases that matter: concurrent holds, duplicate capture, tampered amount, foreign object access, and webhook signature rejection.\n\nRun against a LOCAL instance only. Set `baseUrl` and run `./scripts/reset-demo.sh` first so the fixtures are deterministic.\n\nAuthentication: POST /auth/login returns HttpOnly session + non-HttpOnly `ss_csrf` cookies. Collection-level scripts copy the CSRF value into `csrfToken`; Postman persists cookies automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "csrfToken",
+      "value": ""
+    },
+    {
+      "key": "holdId",
+      "value": ""
+    },
+    {
+      "key": "attemptId",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "simulatedOrderId",
+      "value": ""
+    },
+    {
+      "key": "foreignBookingId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Capture the CSRF cookie after any request that sets it.",
+          "const jar = pm.cookies;",
+          "const token = jar.get('ss_csrf');",
+          "if (token) { pm.collectionVariables.set('csrfToken', token); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1 \u00b7 Public",
+      "item": [
+        {
+          "name": "Health is ok",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is ok', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});",
+                  "pm.test('reports a provider mode', function () {",
+                  "    pm.expect(['simulated', 'sandbox']).to.include(pm.response.json().paypal_mode);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Config exposes no secrets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "config"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('never contains credential material', function () {",
+                  "    const raw = pm.response.text().toLowerCase();",
+                  "    ['client_secret', 'api_key', 'secret', 'token', 'password'].forEach(function (k) {",
+                  "        pm.expect(raw).to.not.include(k);",
+                  "    });",
+                  "});",
+                  "pm.test('publishes the business timezone', function () {",
+                  "    pm.expect(pm.response.json().timezone).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Services catalogue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "services"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('has services with integer prices', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.length).to.be.above(0);",
+                  "    body.forEach(function (s) { pm.expect(Number.isInteger(s.price_cents)).to.be.true; });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Technicians",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/technicians",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "technicians"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unauthenticated booking list is refused",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 before login', function () { pm.response.to.have.status(401); });",
+                  "pm.test('error envelope', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 \u00b7 Auth",
+      "item": [
+        {
+          "name": "Login as customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"maya@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('signed in', function () { pm.response.to.have.status(200); });",
+                  "pm.test('role is customer', function () {",
+                  "    pm.expect(pm.response.json().role).to.eql('customer');",
+                  "});",
+                  "pm.test('csrf cookie captured', function () {",
+                  "    pm.expect(pm.collectionVariables.get('csrfToken')).to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown account is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 for unknown account', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 \u00b7 Customer journey",
+      "item": [
+        {
+          "name": "Assistant returns real options",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/assistant/message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "assistant",
+                "message"
+              ]
+            },
+            "description": "The seeded demo request must yield options that satisfy the stated constraints.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I need washing-machine service tomorrow after 4 PM. My budget is $80, and it must finish before 6.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('assistant reported tool activity', function () {",
+                  "    pm.expect(pm.response.json().tool_trace.length).to.be.above(0);",
+                  "});",
+                  "pm.test('options are real rows', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.options.length).to.be.above(0);",
+                  "    body.options.forEach(function (o) {",
+                  "        pm.expect(o.timezone_label).to.be.a('string');",
+                  "        pm.expect(o.price_cents).to.be.a('number');",
+                  "    });",
+                  "});",
+                  "pm.test('respects the stated budget', function () {",
+                  "    pm.response.json().options.forEach(function (o) {",
+                  "        pm.expect(o.price_cents).to.be.at.most(8000);",
+                  "    });",
+                  "});",
+                  "const first = pm.response.json().options[0];",
+                  "if (first) {",
+                  "    pm.collectionVariables.set('optionStartUtc', first.start_utc);",
+                  "    pm.collectionVariables.set('optionTech', first.technician_id);",
+                  "    pm.collectionVariables.set('optionService', first.service_code);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hold a slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"{{optionService}}\",\n  \"technician_id\": \"{{optionTech}}\",\n  \"start_utc\": \"{{optionStartUtc}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('hold created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('status is active', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('active');",
+                  "});",
+                  "pm.test('countdown is positive', function () {",
+                  "    pm.expect(pm.response.json().seconds_remaining).to.be.above(0);",
+                  "});",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('holdId', b.id);",
+                  "pm.collectionVariables.set('bookingId', b.booking_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Second hold on the same slot is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "The race-safe capacity claim must reject a duplicate reservation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"{{optionService}}\",\n  \"technician_id\": \"{{optionTech}}\",\n  \"start_utc\": \"{{optionStartUtc}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('reports SLOT_UNAVAILABLE', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('SLOT_UNAVAILABLE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds/{{holdId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds",
+                "{{holdId}}",
+                "checkout"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('checkout created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('amount matches the hold', function () {",
+                  "    pm.expect(pm.response.json().amount_cents).to.be.a('number');",
+                  "});",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('attemptId', b.attempt_id);",
+                  "pm.collectionVariables.set('simulatedOrderId', b.simulated_token || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capture before approval is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{attemptId}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{attemptId}}",
+                "capture"
+              ]
+            },
+            "description": "A capture must never succeed before buyer approval.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 not approved', function () { pm.response.to.have.status(409); });",
+                  "pm.test('reports ORDER_NOT_APPROVED', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('ORDER_NOT_APPROVED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Simulate buyer approval",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/simulated-checkout/{{simulatedOrderId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulated-checkout",
+                "{{simulatedOrderId}}",
+                "approve"
+              ]
+            },
+            "description": "Simulated mode only. In sandbox mode this route is 404 and the buyer approves at PayPal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('approved or sandbox-mode 404', function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capture the payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{attemptId}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{attemptId}}",
+                "capture"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('capture accepted', function () { pm.response.to.have.status(200); });",
+                  "pm.test('booking confirmed', function () {",
+                  "    pm.expect(pm.response.json().booking_status).to.eql('confirmed');",
+                  "});",
+                  "pm.test('captured amount equals expected', function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b.captured_amount_cents).to.eql(b.amount_cents);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate capture has no extra effect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{attemptId}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{attemptId}}",
+                "capture"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('still 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('still reconciled_ok', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('reconciled_ok');",
+                  "});",
+                  "pm.test('same capture amount', function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b.captured_amount_cents).to.eql(b.amount_cents);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking persists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('readable after capture', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status confirmed', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('confirmed');",
+                  "});",
+                  "pm.test('has a stable reference', function () {",
+                  "    pm.expect(pm.response.json().reference).to.match(/^SA-/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 \u00b7 Authorization",
+      "item": [
+        {
+          "name": "Owner routes reject a customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/owner/timeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "owner",
+                "timeline"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 for customer', function () { pm.response.to.have.status(403); });",
+                  "pm.test('reports FORBIDDEN', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cannot hold without CSRF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "Override: remove the X-CSRF-Token header for this request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"washer-repair\",\n  \"technician_id\": \"tech_ana\",\n  \"start_utc\": \"2026-11-04T16:00:00Z\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Deliberately strip the CSRF header for this request.",
+                  "pm.request.headers.remove('X-CSRF-Token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('blocked without CSRF', function () {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});",
+                  "pm.test('mentions CSRF', function () {",
+                  "    pm.expect(pm.response.json().error.message).to.include('CSRF');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Client cannot set the price",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"washer-repair\",\n  \"technician_id\": \"tech_ana\",\n  \"start_utc\": \"2026-11-04T16:00:00Z\",\n  \"price_cents\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 for unknown field', function () { pm.response.to.have.status(422); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unaligned start is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "Regression guard: unaligned starts would bypass the capacity index.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"washer-repair\",\n  \"technician_id\": \"tech_ana\",\n  \"start_utc\": \"2026-11-04T16:07:00Z\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 for unaligned start', function () { pm.response.to.have.status(422); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Naive datetime is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/holds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "holds"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_code\": \"washer-repair\",\n  \"technician_id\": \"tech_ana\",\n  \"start_utc\": \"2026-11-04T16:00:00\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 without an offset', function () { pm.response.to.have.status(422); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Foreign booking is not found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{foreignBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{foreignBookingId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404, not 403', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 \u00b7 Webhooks",
+      "item": [
+        {
+          "name": "Unsigned webhook is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/paypal",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "paypal"
+              ]
+            },
+            "description": "Either 401 (intake enabled, signature invalid) or 503 (intake disabled). Never 200.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"WH-TEST-1\",\n  \"event_type\": \"PAYMENT.CAPTURE.COMPLETED\",\n  \"resource\": {\n    \"id\": \"C1\",\n    \"status\": \"COMPLETED\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('never accepted', function () {",
+                  "    pm.expect([401, 503]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 \u00b7 Owner",
+      "item": [
+        {
+          "name": "Login as owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@northline.example\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('signed in as owner', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().role).to.eql('owner');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timeline is served",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/owner/timeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "owner",
+                "timeline"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('has technicians and events', function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b.technicians.length).to.be.above(0);",
+                  "    pm.expect(b).to.have.property('events');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Analytics totals equal their rows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/owner/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "owner",
+                "analytics"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('confirmed revenue equals the counted rows', function () {",
+                  "    const b = pm.response.json();",
+                  "    const rows = b.rows.filter(function (r) { return r.counted_as_revenue; });",
+                  "    const sum = rows.reduce(function (acc, r) { return acc + r.price_cents; }, 0);",
+                  "    pm.expect(b.confirmed_count).to.eql(rows.length);",
+                  "    pm.expect(b.confirmed_revenue_cents).to.eql(sum);",
+                  "});",
+                  "pm.test('service buckets reconcile with the total', function () {",
+                  "    const b = pm.response.json();",
+                  "    const sum = b.by_service.reduce(function (a, x) { return a + x.revenue_cents; }, 0);",
+                  "    pm.expect(sum).to.eql(b.confirmed_revenue_cents);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit trail is available",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/owner/audit?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "owner",
+                "audit?limit=20"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

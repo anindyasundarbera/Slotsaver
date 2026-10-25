@@ -22,13 +22,13 @@ Owner column names the accountable role. Status uses the repo vocabulary:
 | 8 | Owner timeline + analytics with backing rows | Backend | 4 | DONE | `tests/test_durability.py::test_analytics_agree_with_seeded_and_mutated_records` |
 | 9 | Bounded assistant with real tool calls, scripted + LLM runtimes | Agent/runtime | 2 | DONE | `tests/test_assistant_abuse.py` |
 | 10 | Auth, object ownership, CSRF, rate limits | Backend + Security | 2 | DONE | `tests/test_authorization.py` |
-| 11 | Angular customer flow (chat, options, hold, checkout, confirmation) | Frontend | 2 | IN PROGRESS | frontend agent report + `npm run build` |
-| 12 | Angular owner workspace (Bryntum timeline, analytics, disruption) | Frontend | 8, 11 | IN PROGRESS | frontend agent report |
+| 11 | Angular customer flow (chat, options, hold, checkout, confirmation) | Frontend | 2 | DONE | verified in a real browser; `npm run build` |
+| 12 | Angular owner workspace (Bryntum timeline, analytics, disruption) | Frontend | 8, 11 | DONE | verified in a real browser: timeline renders 3 rows/5 events, day nav rebuilds, disruption + approval round-trip |
 | 13 | Deterministic seed + reset | Backend | 2 | DONE | `tests/test_durability.py::test_demo_reset_endpoint_is_owner_only_and_restores_fixtures` |
-| 14 | Independent security review | Security (separate agent) | 10, 11, 12 | PENDING | [`security-review.md`](./security-review.md) |
-| 15 | Test evidence log with exact commands | QA | 3–13 | IN PROGRESS | [`test-evidence.md`](./test-evidence.md) |
+| 14 | Independent security review | Security (separate agent) | 10, 11, 12 | DONE | [`security-review.md`](./security-review.md) — 3 HIGH + 1 LOW, all fixed and regression-tested |
+| 15 | Test evidence log with exact commands | QA | 3–13 | DONE | [`test-evidence.md`](./test-evidence.md); [`integration-evidence.md`](./integration-evidence.md) |
 | 16 | Sponsor matrix with honest status | Architecture | 1 | DONE | [`integration-status.md`](./integration-status.md) |
-| 17 | Demo runbook (5 min) + 2:45 submission script | QA | 11, 12 | PENDING | [`demo-runbook.md`](./demo-runbook.md) |
+| 17 | Demo runbook (5 min) + 2:45 submission script | QA | 11, 12 | DONE | [`demo-runbook.md`](./demo-runbook.md) |
 | 18 | Deployment notes (Render/Postgres caveats) | Architecture | 1 | DONE | [`deployment.md`](./deployment.md) |
 
 ## Blockers
@@ -39,3 +39,8 @@ Owner column names the accountable role. Status uses the repo vocabulary:
 | Bryntum Scheduler is commercial; only the **trial** build is public | Timeline shows an evaluation watermark | Trial is pinned and used as-is with a visible disclosure; a functional CSS fallback timeline ships so the demo cannot die. Licensed registry access is BLOCKED (401). |
 | AG Studio is commercial and not selected as the primary award target | Not integrated | Deliberately out of scope; Bryntum is the single sponsor target (rules allow one sponsor prize). |
 | Astropods not selected as the runtime | Not integrated | One runtime chosen by design; provider-agnostic LLM path retained and documented. |
+
+| 19 | PayPal config validation, operation keys, webhook gate, preflight | Backend | 5 | DONE | [`integration-evidence.md`](./integration-evidence.md) §1–2 |
+| 20 | APIMatic Context Plugin installation + real use record | Architecture | — | DONE | [`integration-evidence.md`](./integration-evidence.md) §5 |
+| 21 | Postman collection executed against the local stack | QA | 19 | DONE | 27 requests / 53 assertions, 0 failures, twice |
+| 22 | Gap matrix + config mapping + evidence docs | Architecture | 19–21 | DONE | `/docs/integration-*.md` |

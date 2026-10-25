@@ -9,7 +9,7 @@ cd backend && ../.venv/bin/python -m pytest -q
 ```
 
 ```
-70 passed in 8.62s
+107 passed in 9.18s
 ```
 
 Everything below runs with **no network access** and no real credentials.
@@ -23,6 +23,8 @@ Everything below runs with **no network access** and no real credentials.
 | `tests/test_reassignment.py` | 6 | Disruption preserves the paid booking and its price while raising a proposal; customer approval persists the new technician and clears the warning; decline keeps `needs_reassignment`; another customer cannot approve (404); an un-offered technician is refused; **when every alternative is busy the proposal is `unresolved`** and no replacement is invented. |
 | `tests/test_assistant_abuse.py` | 15 | 5 injection payloads create no payment attempt and no booking, and every tool call stays inside the allow-list; cross-customer lookup leaks nothing; offered options never overlap an active reservation; missing service yields a clarifying question; no availability is reported honestly; the demo sentence parses to the right constraints; 5 malformed model outputs rejected by `_strict_json`; provider outage → labelled fallback **with real options**; malformed LLM output → fallback; assistant endpoint rate-limited (429). |
 | `tests/test_durability.py` | 4 | State survives a full app restart (engines disposed, caches reset, same SQLite file) and is verified by reading the DB directly; analytics totals equal the sum of the rows they summarise, and bucket totals match the headline; timeline and analytics agree after a mutation; demo reset is owner-only and restores fixtures. |
+| `tests/test_paypal_integration.py` | 28 | Operation-key separation, approved sandbox origin enforcement, experience-context vs application-context order body, webhook enable gate returning 503, and preflight output never containing a secret value, prefix or response body. |
+| `tests/test_regressions.py` | 9 | Unaligned `start_utc` rejected; retry after a failed attempt; late capture releases capacity instead of orphaning it; force-confirm must win the capacity claim; a losing racer leaves no dangling cells. |
 | `tests/test_paypal_adapter.py` | 11 | Real adapter request shape: `/v2/checkout/orders` with server-derived `75.00`, `PayPal-Request-Id`, `custom_id`/`invoice_id`, merchant payee, and **no client-supplied price**; capture parsing of the settled amount; 422 → `ORDER_NOT_CAPTURABLE`; transport failure → ambiguous capture flag; bad credentials → provider unavailable; webhook verification requires all five headers and calls PayPal's endpoint with the right body; `FAILURE` is rejected; `PAYPAL_MODE=live` raises at config load; sandbox without credentials raises; provider selection respects mode. |
 
 ### Notes on test design
