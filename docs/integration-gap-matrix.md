@@ -15,7 +15,7 @@ variable names are preserved and aliases are accepted in one place
 |---|---|---|
 | PayPal Orders v2 create/capture/read | IMPLEMENTED, VERIFIED_FIXTURE | `backend/app/services/payments.py::PayPalProvider`; `backend/tests/test_paypal_adapter.py` (11 tests, stubbed transport) |
 | PayPal webhook signature verification | IMPLEMENTED, VERIFIED_FIXTURE | `PayPalProvider.verify_webhook` → `/v1/notifications/verify-webhook-signature` |
-| PayPal connected journey | BLOCKED | No sandbox credentials or registered webhook URL in this environment |
+| PayPal connected journey | **PARTIALLY VERIFIED_CONNECTED** (2026-10-26) | OAuth authenticated (26 scopes), a real sandbox order was created and read back, and capture was correctly refused pre-approval. Buyer approval + capture still NOT RUN (needs interactive buyer login). |
 | Durable hold/booking/payment state | IMPLEMENTED, VERIFIED_FIXTURE | `backend/tests/test_durability.py`, `test_payment_integrity.py`, `test_regressions.py` |
 | Race-safe slot acquisition | IMPLEMENTED, VERIFIED_FIXTURE | partial unique index `ux_slot_blocks_active` |
 | Bryntum timeline | SIMULATED→IMPLEMENTED on trial build | `frontend/src/app/owner/timeline.component.ts`; trial watermark disclosed |

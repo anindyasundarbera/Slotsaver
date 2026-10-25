@@ -16,9 +16,12 @@ fixtures. Nothing below claims a vendor integration from key presence.
 | Sandbox mode with missing credentials | same, `PAYPAL_CLIENT_ID=` | exit 1, `paypal_auth_config: MISSING (PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET)` — names only | VERIFIED_FIXTURE |
 | Live mode refused | `PAYPAL_MODE=live` | `ConfigError` at startup | VERIFIED_FIXTURE |
 | Non-sandbox base URL refused | `PAYPAL_BASE_URL=https://api-m.paypal.com` | `ConfigError` mentioning sandbox | VERIFIED_FIXTURE |
-| **OAuth exchange against real PayPal** | `.venv/bin/python -m app.preflight --network` with real sandbox credentials | **NOT RUN** — no sandbox REST app credentials exist in this environment | NOT RUN |
-| **Browser buyer approval + real capture** | manual | **NOT RUN** — same blocker | NOT RUN |
-| **Live webhook delivery + verification** | manual, needs public HTTPS | **NOT RUN** — no public listener, no registered subscription | NOT RUN |
+| **OAuth exchange against real PayPal** | `../.venv/bin/python -m app.preflight --network` with configured sandbox credentials | **`paypal_oauth: AUTHENTICATED (http 200, 26 scope(s), token not stored)`** | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Real sandbox order creation** | UI → hold → *Pay with PayPal* | HTTP 201, `provider_mode: sandbox`, `amount_cents: 7500 USD`, real `https://www.sandbox.paypal.com/checkoutnow?token=...` approval URL | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Order read back from PayPal** | `PayPalProvider.get_order(order_id)` | PayPal reports the same order id, state `CREATED`, `custom_id` set | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Capture refused before buyer approval** | `POST /api/payments/{id}/capture` | HTTP **409** `ORDER_NOT_CAPTURABLE` — PayPal itself refuses; no booking confirmed | **VERIFIED_CONNECTED** (2026-10-26) |
+| **Browser buyer approval + confirmed capture** | log in as a sandbox *personal* buyer, approve, then capture | **NOT RUN** — requires interactive sandbox buyer credentials, which were not provided | NOT RUN |
+| **Live webhook delivery + verification** | needs a registered public HTTPS subscription | **NOT RUN** — no public listener or subscription id | NOT RUN |
 
 Tests covering the above: `backend/tests/test_paypal_integration.py` (28) and
 `backend/tests/test_paypal_adapter.py` (11).

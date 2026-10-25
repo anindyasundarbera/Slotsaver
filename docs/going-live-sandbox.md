@@ -65,6 +65,27 @@ slot, **Pay with PayPal** (a real sandbox approve link opens — log in as the
 
 The badge in the header must read **PayPal Sandbox**, not "Offline rehearsal".
 
+## 4b. Verified so far (2026-10-26), and what remains
+
+With the configured credentials, these steps are **confirmed against real PayPal**:
+
+| Step | Result |
+|---|---|
+| `preflight --network` | `AUTHENTICATED (http 200, 26 scope(s))` |
+| Order creation via the UI | 201, `provider_mode: sandbox`, real `sandbox.paypal.com` approval URL |
+| Order read back | PayPal reports the same id in state `CREATED` with our `custom_id` |
+| Capture before approval | 409 `ORDER_NOT_CAPTURABLE` — refused by PayPal, no booking confirmed |
+
+Still **not run**, because they need interactive sandbox-buyer credentials:
+
+1. Log in as the sandbox **personal** buyer on the approval URL and approve.
+2. Return to SlotSaver and click **Capture payment**; the booking should become
+   **Confirmed** with the captured amount.
+3. Restart the API and confirm the booking survives.
+
+Everything is wired for those three steps; they are blocked on a human login, not
+on code.
+
 ## 5. Optional — webhooks
 
 1. Expose `https://<your-host>/api/webhooks/paypal` on port 443 (a tunnel is fine

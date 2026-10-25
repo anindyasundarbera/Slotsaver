@@ -97,14 +97,26 @@ import { Spinner } from './shared/spinner';
           <ss-spinner label="Loading demo accounts…" />
         }
 
-        <div class="notice notice-info" style="margin-top: 20px">
-          <span class="notice-icon" aria-hidden="true">i</span>
-          <span>
-            Offline rehearsal mode uses a labelled simulated payment provider. Set
-            <span class="mono">PAYPAL_MODE=sandbox</span> with real credentials for the
-            connected journey. The mode is never switched silently.
-          </span>
-        </div>
+        @if (session.config()?.paypal_mode === 'sandbox') {
+          <div class="notice notice-info" style="margin-top: 20px">
+            <span class="notice-icon" aria-hidden="true">i</span>
+            <span>
+              <strong>Connected to PayPal Sandbox.</strong> Orders and captures are real
+              sandbox transactions. No real money moves, and the buyer must approve in a
+              sandbox account before capture succeeds.
+            </span>
+          </div>
+        } @else {
+          <div class="notice notice-warn" style="margin-top: 20px">
+            <span class="notice-icon" aria-hidden="true">!</span>
+            <span>
+              <strong>Offline rehearsal — payments are simulated.</strong> Set
+              <span class="mono">PAYPAL_MODE=sandbox</span> in
+              <span class="mono">backend/.env</span> with real credentials for the
+              connected journey. The mode is never switched silently.
+            </span>
+          </div>
+        }
       </section>
     </div>
   `,

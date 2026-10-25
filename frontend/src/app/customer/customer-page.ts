@@ -270,6 +270,35 @@ export class CustomerPage implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Cancel a checkout in either mode.
+   *
+   * In sandbox mode the provider order is simply abandoned: PayPal expires it,
+   * and the next checkout creates a fresh one because the previous attempt is
+   * closed. Never call the simulated-only endpoints here.
+   */
+  protected async declineCheckout(): Promise<void> {
+    if (!this.simulated()) {
+      const checkout = this.checkout();
+      if (!checkout) return;
+      this.error.set(null);
+      this.busyLabel.set('Cancelling the checkout…');
+      try {
+        const payment = await firstValueFrom(this.api.cancelPayment(checkout.attempt_id));
+        this.payment.set(payment);
+        this.holdNotice.set('Checkout cancelled — no booking was confirmed.');
+        this.stopTimer();
+        await this.reloadBookings();
+      } catch (error) {
+        this.error.set(present(error));
+      } finally {
+        this.busyLabel.set(null);
+      }
+      return;
+    }
+    await this.declineSimulated();
+  }
+
   protected async declineSimulated(): Promise<void> {
     const checkout = this.checkout();
     if (!checkout?.simulated_token) return;
