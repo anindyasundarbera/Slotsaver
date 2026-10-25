@@ -188,6 +188,8 @@ def start_checkout(
             else _approve_url(provider, attempt.provider_order_id)
         ),
         simulated_token=attempt.provider_order_id if attempt.provider_mode == "simulated" else None,
+        # A short, non-secret identifier the buyer can match against the PayPal tab.
+        order_reference=attempt.provider_order_id,
         expires_at=hold.expires_at,
     )
 

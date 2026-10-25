@@ -274,8 +274,13 @@
                   {{ simulated() ? 'Decline' : 'Cancel checkout' }}
                 </button>
               </div>
-              <span class="hint">Order {{ co.simulated_token ?? '—' }} ·
-                {{ money(co.amount_cents, co.currency) }}</span>
+              <span class="hint">
+                @if (co.order_reference) {
+                  {{ simulated() ? 'Simulated order' : 'PayPal order' }}
+                  <span class="mono">{{ co.order_reference }}</span> ·
+                }
+                {{ money(co.amount_cents, co.currency) }}
+              </span>
             }
           }
         </div>

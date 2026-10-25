@@ -115,6 +115,7 @@ export interface CheckoutInfo {
   currency: string;
   approve_url: string | null;
   simulated_token: string | null;
+  order_reference: string | null;
   expires_at: string;
 }
 

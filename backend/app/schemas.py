@@ -144,6 +144,7 @@ class CheckoutOut(StrictModel):
     currency: str
     approve_url: str | None = None
     simulated_token: str | None = None
+    order_reference: str | None = None
     expires_at: datetime
 
 
