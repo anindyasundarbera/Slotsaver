@@ -128,6 +128,10 @@ class Settings:
     paypal_return_url: str = ""
     paypal_cancel_url: str = ""
     paypal_webhooks_enabled: bool = False
+    # Sandbox *personal buyer* used only by the automated end-to-end harness.
+    # Never used by the application at runtime.
+    paypal_sandbox_buyer_email: str = ""
+    paypal_sandbox_buyer_password: str = ""
     paypal_webhook_url: str = ""
     enable_bryntum: bool = True
 
@@ -210,6 +214,8 @@ def load_settings(*, strict: bool = True) -> Settings:
         paypal_return_url=_env("PAYPAL_RETURN_URL", "") or "",
         paypal_cancel_url=_env("PAYPAL_CANCEL_URL", "") or "",
         paypal_webhook_url=_env("PAYPAL_WEBHOOK_URL", "") or "",
+        paypal_sandbox_buyer_email=_env("PAYPAL_SANDBOX_BUYER_EMAIL", "") or "",
+        paypal_sandbox_buyer_password=_env("PAYPAL_SANDBOX_BUYER_PASSWORD", "") or "",
         paypal_webhooks_enabled=_env_bool(
             "PAYPAL_WEBHOOKS_ENABLED",
             bool(_env("PAYPAL_WEBHOOK_ID", "")),

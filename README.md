@@ -53,6 +53,7 @@ curl -s localhost:4200/api/health          # same, through the dev-server proxy
 ./scripts/test.sh            # backend tests + frontend typecheck + production build
 cd backend && ../.venv/bin/python -m app.preflight   # capability report
 ./scripts/reset-demo.sh      # rebuild only the synthetic demo database
+.venv/bin/python scripts/e2e_sandbox.py   # full sandbox journey, headless
 ```
 
 ---
@@ -166,6 +167,7 @@ Full matrix with evidence and limits: [`docs/integration-status.md`](docs/integr
 | [`docs/vendor-verification.md`](docs/vendor-verification.md) | Rules and vendor claims with sources |
 | [`docs/demo-runbook.md`](docs/demo-runbook.md) | 5-minute walkthrough + **2:45 submission cut** + recovery card |
 | [`docs/going-live-sandbox.md`](docs/going-live-sandbox.md) | Step-by-step to paste sandbox keys and run the real journey |
+| [`docs/e2e-sandbox.md`](docs/e2e-sandbox.md) | Automated headless end-to-end journey incl. buyer approval |
 | [`docs/deployment.md`](docs/deployment.md) | Postgres, Render caveats, prepared-but-unverified config |
 | [`docs/task-board.md`](docs/task-board.md) | Task ownership, dependencies, blockers |
 
