@@ -166,6 +166,7 @@ Full matrix with evidence and limits: [`docs/integration-status.md`](docs/integr
 | [`docs/integration-evidence.md`](docs/integration-evidence.md) | Exact commands and connected evidence |
 | [`docs/vendor-verification.md`](docs/vendor-verification.md) | Rules and vendor claims with sources |
 | [`docs/demo-runbook.md`](docs/demo-runbook.md) | 5-minute walkthrough + **2:45 submission cut** + recovery card |
+| [`docs/screenshots/`](docs/screenshots/README.md) | Synthetic screenshots captured from the running app, with what each does and does **not** prove |
 | [`docs/going-live-sandbox.md`](docs/going-live-sandbox.md) | Step-by-step to paste sandbox keys and run the real journey |
 | [`docs/e2e-sandbox.md`](docs/e2e-sandbox.md) | Automated headless end-to-end journey incl. buyer approval |
 | [`docs/deployment.md`](docs/deployment.md) | Postgres, Render caveats, prepared-but-unverified config |

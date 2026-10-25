@@ -112,12 +112,30 @@ npx --yes newman run postman/SlotSaver.postman_collection.json \
 27 requests, 53 assertions, including the negative cases. Run it after
 `./scripts/reset-demo.sh` for deterministic results — it assumes clean fixtures.
 
+## Screenshots for the submission pack
+
+[`screenshots/`](./screenshots/README.md) holds eight images captured from the running app
+by `scripts/capture_screenshots.py`. They are useful as judge-facing stills and as
+slide filler, but two of them can overstate the build if you are not careful:
+
+- `04-checkout-paypal-sandbox.png` shows a **created order awaiting approval**, not a
+  captured payment. Say "this is the real sandbox order" — not "this is a paid booking".
+- `05`/`06`/`07` show the Bryntum **trial watermark**. Disclose the licence status.
+
+Regenerate at any time:
+
+```bash
+.venv/bin/python scripts/capture_screenshots.py
+```
+
 ## What not to claim
 
 - Do not call the trial Bryntum build licensed.
 - Do not call a simulated payment a sandbox payment.
 - Do not call the POC production-ready; refunds, real money and multi-tenancy
   are explicitly out of scope.
+- Do not claim a completed PayPal sandbox capture until a buyer has actually approved
+  one; the order-creation evidence is not a payment.
 - Do not claim AG Studio, Astropods, Channel3, Elastic, KERNEL, Render or Zapier
   integrations — they are deliberately deferred and reported as such.
 - APIMatic **was** used, as a development-time coding-assistant plugin. Say exactly

@@ -7,8 +7,8 @@ the real thing), **BLOCKED** (attempted, cannot proceed here), **NOT RUN**
 
 | Integration | Intended role | What actually exists | Status | Verified on | Evidence | Limits |
 |---|---|---|---|---|---|---|
-| **PayPal Orders v2** | Create order, capture, verify capture server-side | `backend/app/services/payments.py::PayPalProvider` — real endpoints, `PayPal-Request-Id`, amount derived from integer cents, capture validation on 6 fields | **IMPLEMENTED + VERIFIED (hermetic)** / **NOT RUN (live)** | 2026-10-25 | `tests/test_paypal_adapter.py` (11 tests, stubbed transport) | No sandbox credentials in this environment, so no live order exists. Nothing here is presented as sandbox evidence. |
-| **PayPal Webhooks** | Authoritative, deduplicated payment events | `verify_webhook` → `/v1/notifications/verify-webhook-signature`; `handle_payment_event` with primary-key dedupe + idempotent settlement funnel | **IMPLEMENTED + VERIFIED (hermetic)** / **NOT RUN (live)** | 2026-10-25 | `tests/test_paypal_adapter.py::test_webhook_verification_calls_paypals_endpoint`; `tests/test_payment_integrity.py` (forged, replayed, duplicate-id) | A live webhook needs a public URL; not attempted. |
+| **PayPal Orders v2** | Create order, capture, verify capture server-side | `backend/app/services/payments.py::PayPalProvider` — real endpoints, `PayPal-Request-Id`, amount derived from integer cents, capture validation on 6 fields | **IMPLEMENTED + VERIFIED_CONNECTED (create/read)** / **NOT RUN (buyer approval + capture)** | 2026-10-26 | OAuth authenticated (200, 26 scopes); real sandbox order created (201, `75.00 USD`) and read back; capture correctly refused pre-approval (409). [`integration-evidence.md`](./integration-evidence.md) §1 | Buyer approval needs an interactive sandbox **personal** account login. Nothing is presented as sandbox evidence that did not come from PayPal. |
+| **PayPal Webhooks** | Authoritative, deduplicated payment events | `verify_webhook` → `/v1/notifications/verify-webhook-signature`; `handle_payment_event` with primary-key dedupe + idempotent settlement funnel | **IMPLEMENTED + VERIFIED (hermetic)** / **NOT RUN (live delivery)** | 2026-10-25 | `tests/test_paypal_adapter.py::test_webhook_verification_calls_paypals_endpoint`; `tests/test_payment_integrity.py` (forged, replayed, duplicate-id) | Live delivery needs a public HTTPS callback + registered subscription; no tunnel authorised. |
 | **Simulated payment provider** | Offline rehearsal without network | `SimulatedProvider` — creates/approves/voids/captures orders, HMAC-signed webhooks | **SIMULATED** | 2026-10-25 | `tests/test_happy_path.py`, `tests/test_payment_integrity.py` | Clearly labelled in API (`provider_mode: "simulated"`), UI badge, and docs. Never called "PayPal". |
 | **Bryntum Scheduler** | Owner technician timeline | `frontend` timeline component on `@bryntum/scheduler-trial@7.3.7` (npm alias), plus a functional CSS fallback | **IMPLEMENTED (trial) / BLOCKED (licensed)** | 2026-10-25 | `npm view @bryntum/scheduler` → placeholder; `https://npm.bryntum.com/...` → HTTP 401 | Trial build is watermarked and evaluation-only. Licensed registry needs credentials we do not have. Trial + public-demo licensing must be confirmed with Bryntum before submission. |
 | **AG Studio** | Owner analytics with AI exploration | Nothing | **NOT INTEGRATED (deliberate)** | 2026-10-25 | [`vendor-verification.md`](./vendor-verification.md) §2 | Commercial licence. Rules allow only **one** sponsor prize, so building both would create an unclaimable integration. Bryntum chosen instead. |
@@ -22,10 +22,14 @@ the real thing), **BLOCKED** (attempted, cannot proceed here), **NOT RUN**
 ## What this means for the submission
 
 The PayPal integration is the core of the entry and is **real code against the real
-API**. It is hermetic-tested, and its connected journey is explicitly **NOT RUN**
-here. When sandbox credentials are supplied via `backend/.env`
-(`PAYPAL_MODE=sandbox`), the same code path runs with no changes — that is the
-first thing to do before recording the submission video.
+API**. Its connected journey is **verified for OAuth, order creation and order read**;
+buyer approval and capture are explicitly **NOT RUN** because they need an interactive
+sandbox personal-account login. When a buyer approves, the same code path completes with
+no changes — see [`e2e-sandbox.md`](./e2e-sandbox.md).
+
+Credentials live only in the git-ignored `backend/.env`, which the app loads at startup
+(an exported variable always wins). [`going-live-sandbox.md`](./going-live-sandbox.md)
+walks through the switch from `simulated` to `sandbox`.
 
 The one sponsor target is **Bryntum**, whose timeline is genuinely load-bearing in
 the owner experience (it is how the presenter *shows* holds, confirmed bookings and
@@ -43,7 +47,7 @@ Selected slice implemented after reading the sponsor handbook. Full detail in
 
 | Integration | Change in this continuation | New status |
 |---|---|---|
-| **PayPal** | Configurable-but-validated sandbox base URL; separate create/capture idempotency keys; `payment_source.paypal.experience_context` when return/cancel URLs are set; webhook intake behind `PAYPAL_WEBHOOKS_ENABLED` (disabled ⇒ `503 WEBHOOKS_DISABLED`, never a bypass) | IMPLEMENTED + VERIFIED_FIXTURE; connected journey still **NOT RUN** (no credentials) |
+| **PayPal** | Configurable-but-validated sandbox base URL; separate create/capture idempotency keys; `payment_source.paypal.experience_context` when return/cancel URLs are set; webhook intake behind `PAYPAL_WEBHOOKS_ENABLED` (disabled ⇒ `503 WEBHOOKS_DISABLED`, never a bypass); merchant-id and host shape validation at startup | IMPLEMENTED + VERIFIED_CONNECTED (create/read); capture **NOT RUN** (buyer approval) |
 | **PayPal** | New `python -m app.preflight` (`--network`, `--json`) reporting capability status and missing variable *names* only | IMPLEMENTED + VERIFIED_FIXTURE |
 | **APIMatic** | Installer doctor + installed-plugin listing run; plugin skills loaded and used for PayPal grounding | **VERIFIED_CONNECTED** (development-time) |
 | **Postman** | 27-request / 53-assertion collection, committed and executed twice (clean and after reset), 0 failures | **VERIFIED_CONNECTED** (local stack) |

@@ -16,7 +16,7 @@ Owner column names the accountable role. Status uses the repo vocabulary:
 | 2 | Contracts: OpenAPI-shaped schemas, state machine, data model, invariants | Architecture | 1 | DONE | [`architecture.md`](./architecture.md); `backend/app/schemas.py` |
 | 3 | Race-safe slot acquisition (partial unique index) | Backend | 2 | DONE | `tests/test_hold_lifecycle.py::test_two_customers_racing_for_one_slot_exactly_one_wins` |
 | 4 | Hold lifecycle, expiry reaper, cancelled checkout | Backend | 3 | DONE | `tests/test_hold_lifecycle.py` |
-| 5 | PayPal adapter (Orders v2 + webhook verify) behind a typed protocol | Backend | 2 | DONE (hermetic) / BLOCKED (live) | `tests/test_paypal_adapter.py` (stubbed transport); live sandbox NOT RUN — no credentials |
+| 5 | PayPal adapter (Orders v2 + webhook verify) behind a typed protocol | Backend | 2 | DONE (hermetic) / VERIFIED_CONNECTED (create+read) / NOT RUN (buyer approval+capture) | `tests/test_paypal_adapter.py` (stubbed transport); live OAuth + order create/read recorded in [`integration-evidence.md`](./integration-evidence.md) §1 |
 | 6 | Capture validation, dedupe, reconciliation, payment exceptions | Backend | 5 | DONE | `tests/test_payment_integrity.py` |
 | 7 | Reassignment: disruption → proposal → approval → atomic re-validation | Backend | 4 | DONE | `tests/test_reassignment.py` |
 | 8 | Owner timeline + analytics with backing rows | Backend | 4 | DONE | `tests/test_durability.py::test_analytics_agree_with_seeded_and_mutated_records` |
@@ -30,12 +30,14 @@ Owner column names the accountable role. Status uses the repo vocabulary:
 | 16 | Sponsor matrix with honest status | Architecture | 1 | DONE | [`integration-status.md`](./integration-status.md) |
 | 17 | Demo runbook (5 min) + 2:45 submission script | QA | 11, 12 | DONE | [`demo-runbook.md`](./demo-runbook.md) |
 | 18 | Deployment notes (Render/Postgres caveats) | Architecture | 1 | DONE | [`deployment.md`](./deployment.md) |
+| 19 | Synthetic screenshots from the running app | QA | 17 | DONE | [`screenshots/`](./screenshots/README.md) — 8 PNGs + provenance note |
 
 ## Blockers
 
 | Blocker | Impact | Mitigation in place |
 |---|---|---|
-| No PayPal Sandbox credentials in this environment | Connected-mode journey NOT RUN | Entire flow is implemented against the real Orders v2 API behind a typed adapter; hermetic tests cover request/response shape, idempotency header, signature verification. Runs unchanged once `PAYPAL_*` is set. |
+| No interactive PayPal **buyer** approval | Live capture NOT RUN (order creation **is** verified connected) | Requires a sandbox *personal* account login in a browser. OAuth, order create and order read are verified against real PayPal; the harness in `scripts/e2e_sandbox.py` finishes the journey once buyer credentials or a human is available. |
+| PayPal webhook delivery needs a public HTTPS callback | Live webhook NOT RUN | Verification is implemented against PayPal's real endpoint and hermetic-tested (forged/replayed/duplicate). A tunnel plus registered subscription is all that remains. |
 | Bryntum Scheduler is commercial; only the **trial** build is public | Timeline shows an evaluation watermark | Trial is pinned and used as-is with a visible disclosure; a functional CSS fallback timeline ships so the demo cannot die. Licensed registry access is BLOCKED (401). |
 | AG Studio is commercial and not selected as the primary award target | Not integrated | Deliberately out of scope; Bryntum is the single sponsor target (rules allow one sponsor prize). |
 | Astropods not selected as the runtime | Not integrated | One runtime chosen by design; provider-agnostic LLM path retained and documented. |
