@@ -24,6 +24,10 @@ git clone <this repo> && cd Slotsaver
 ./scripts/dev.sh            # API on :8000, UI on :4200
 ```
 
+To use **real PayPal Sandbox** instead of the offline rehearsal, paste your
+credentials into `backend/.env` and set `PAYPAL_MODE=sandbox` — the app reads that
+file at startup. See [`docs/going-live-sandbox.md`](docs/going-live-sandbox.md).
+
 Open **http://localhost:4200** and pick a demo account.
 
 | Email | Role |
@@ -121,6 +125,7 @@ cd backend && ../.venv/bin/python -m pytest -q
 | `test_assistant_abuse.py` | 5 prompt-injection payloads, cross-customer lookup, no invented availability, malformed model output, provider outage, rate limit |
 | `test_durability.py` | App restart preserves state; analytics equal the rows they summarise; timeline/analytics agree after mutation; owner-only reset |
 | `test_paypal_adapter.py` | Real PayPal request shape, idempotency header, capture parsing, error mapping, webhook verification, live-mode refusal |
+| `test_dotenv.py` | `.env` is read at import, a real env var wins over it, the skip flag works, and a populated `.env` cannot break the suite |
 | `test_paypal_integration.py` | Operation-key separation, approved base origin, experience-context order body, webhook enable gate, and preflight secret hygiene |
 | `test_regressions.py` | Unaligned-start rejection, retry after a failed attempt, late-capture capacity release, force-confirm capacity claim, rollback safety |
 
@@ -160,6 +165,7 @@ Full matrix with evidence and limits: [`docs/integration-status.md`](docs/integr
 | [`docs/integration-evidence.md`](docs/integration-evidence.md) | Exact commands and connected evidence |
 | [`docs/vendor-verification.md`](docs/vendor-verification.md) | Rules and vendor claims with sources |
 | [`docs/demo-runbook.md`](docs/demo-runbook.md) | 5-minute walkthrough + **2:45 submission cut** + recovery card |
+| [`docs/going-live-sandbox.md`](docs/going-live-sandbox.md) | Step-by-step to paste sandbox keys and run the real journey |
 | [`docs/deployment.md`](docs/deployment.md) | Postgres, Render caveats, prepared-but-unverified config |
 | [`docs/task-board.md`](docs/task-board.md) | Task ownership, dependencies, blockers |
 

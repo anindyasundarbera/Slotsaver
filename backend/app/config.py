@@ -2,13 +2,43 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from datetime import date, datetime, time
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+ENV_FILE = BACKEND_DIR / ".env"
+
+SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
+ALLOWED_PAYPAL_ORIGINS = {SANDBOX_BASE_URL}
+
+
+def _load_dotenv_once() -> bool:
+    """Populate os.environ from backend/.env, honouring existing variables.
+
+    Never overrides a real environment variable, so shells, CI and the test
+    harness always win over the file. Returns True when a file was read.
+    """
+    if os.environ.get("SLOTSAVER_SKIP_DOTENV", "") == "1":
+        return False
+    if not ENV_FILE.is_file():
+        return False
+    try:
+        from dotenv import load_dotenv
+    except ModuleNotFoundError:  # pragma: no cover - dependency is pinned
+        return False
+    # override=False: an exported variable beats the file.
+    return load_dotenv(dotenv_path=ENV_FILE, override=False)
+
+
+DOTENV_LOADED = _load_dotenv_once()
+
 
 class ConfigError(RuntimeError):
     pass
+
+
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -28,8 +58,8 @@ def _env_int(name: str, default: int) -> int:
         raise ConfigError(f"{name} must be an integer") from exc
 
 
-SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
-ALLOWED_PAYPAL_ORIGINS = {SANDBOX_BASE_URL}
+
+
 
 PLACEHOLDER_MARKERS = ("your_", "your-", "replace", "changeme", "example", "demo-", "todo")
 
@@ -74,6 +104,7 @@ class Settings:
     paypal_merchant_id: str = ""
     paypal_webhook_id: str = ""
     simulated_webhook_secret: str = ""
+    simulated_webhook_secret_generated: bool = False
     paypal_timeout_seconds: int = 20
     paypal_base_url_override: str = ""
     paypal_return_url: str = ""
@@ -182,7 +213,9 @@ def load_settings(*, strict: bool = True) -> Settings:
             import secrets as _secrets
 
             settings = replace(
-                settings, simulated_webhook_secret=_secrets.token_urlsafe(32)
+                settings,
+                simulated_webhook_secret=_secrets.token_urlsafe(32),
+                simulated_webhook_secret_generated=True,
             )
 
     if (

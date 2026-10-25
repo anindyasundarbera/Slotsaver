@@ -12,6 +12,9 @@ sys.path.insert(0, str(ROOT))
 
 
 def pytest_configure(config):
+    # Keep tests hermetic: a developer's populated backend/.env must never leak
+    # into the suite. Must be set before app.config is imported.
+    os.environ["SLOTSAVER_SKIP_DOTENV"] = "1"
     os.environ.setdefault("PAYPAL_MODE", "simulated")
     os.environ.setdefault("ASSISTANT_MODE", "scripted")
     os.environ.setdefault("DEMO_DATE", "2026-11-03")

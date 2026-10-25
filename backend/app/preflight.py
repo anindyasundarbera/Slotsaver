@@ -106,12 +106,16 @@ def static_checks(settings: Settings) -> list[Check]:
         checks.append(Check("paypal_webhooks", DISABLED, "server-side capture/reconcile only"))
 
     if settings.paypal_mode == "simulated":
-        configured = _configured(settings.simulated_webhook_secret)
+        generated = settings.simulated_webhook_secret_generated
         checks.append(
             Check(
                 "simulated_webhook_key",
-                OK if configured else "RANDOM_PER_PROCESS",
-                "configured" if configured else "generated; not shared with any client",
+                "RANDOM_PER_PROCESS"
+                if generated
+                else (OK if _configured(settings.simulated_webhook_secret) else MISSING),
+                "generated at startup; not shared with any client"
+                if generated
+                else ("operator-provided" if not generated else ""),
             )
         )
 

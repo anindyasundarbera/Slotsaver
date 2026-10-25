@@ -14,6 +14,20 @@ these names automatically.
 | Server secrets | `PAYPAL_CLIENT_SECRET`, `LLM_API_KEY`, `SIMULATED_WEBHOOK_SECRET` | Backend only; never serialised; excluded from logs and audit |
 | User/account state | sandbox buyer login, webhook registration, Bryntum licence | Manual; `.env` cannot create these |
 
+## How `.env` is actually read
+
+`backend/app/config.py` loads `backend/.env` **at import time** via
+`python-dotenv` with `override=False`:
+
+- a variable already exported in the shell/CI **wins** over the file
+- `SLOTSAVER_SKIP_DOTENV=1` disables loading entirely (the test suite sets this so a
+  developer's populated `.env` can never leak into tests)
+- `.env` is git-ignored; `.env.example` is the tracked placeholder template
+- `scripts/setup.sh` copies the template to `.env` if it is missing
+
+Contract tests: `backend/tests/test_dotenv.py` (4 tests) prove all four behaviours,
+including that a `.env` with realistic sandbox credentials cannot break the suite.
+
 Angular does **not** read `.env`. `frontend/src/environments.ts` holds only
 compile-time public values (`apiBase`), and contains a comment forbidding secrets.
 
