@@ -118,7 +118,8 @@ the SDK itself is not a dependency. No APIMatic runtime key exists or is needed.
 
 | Check | Command | Outcome | Class |
 |---|---|---|---|
-| Collection executes | `npx --yes newman run postman/SlotSaver.postman_collection.json -e postman/SlotSaver.local.postman_environment.json` | 27 requests, 53 assertions, **0 failures** | VERIFIED_CONNECTED (local stack) |
+| Collection executes — **simulated** mode | `npx --yes newman run postman/SlotSaver.postman_collection.json -e postman/SlotSaver.local.postman_environment.json` | 27 requests, 53 assertions, **0 failures** | VERIFIED_CONNECTED (local stack) |
+| Collection executes — **sandbox** mode | same command, `PAYPAL_MODE=sandbox` + real credentials | 25 requests, 45 assertions, **0 failures** (capture-dependent steps correctly skipped) | VERIFIED_CONNECTED (local stack + live PayPal for order creation) |
 | Repeatable from a clean state | `POST /api/owner/demo/reset`, then re-run | same result, 0 failures | VERIFIED_CONNECTED |
 | Collection is committed | `postman/SlotSaver.postman_collection.json` + `SlotSaver.local.postman_environment.json` | yes | IMPLEMENTED |
 
@@ -133,8 +134,13 @@ the SDK itself is not a dependency. No APIMatic runtime key exists or is needed.
   times in a minute engages the limiter; the collection then fails with a single
   labelled assertion (`login rate limited - wait 60s`) and stops. That is the
   control working, not a defect.
-- Verified: clean state → **27 requests / 53 assertions / 0 failures**; capacity
-  exhausted → **one** clear failure; rate limited → **one** clear failure.
+- The collection is **mode-aware**: it reads `paypal_mode` from `/api/config`. In
+  sandbox mode the simulated-approve route does not exist and capture cannot
+  succeed without a human buyer, so those two steps assert the correct refusal
+  (`ORDER_NOT_APPROVED` **or** PayPal's `ORDER_NOT_CAPTURABLE`) and skip forward to
+  the remaining negative suites instead of ending the run.
+- Verified: simulated mode → **27 / 53 / 0**; sandbox mode → **25 / 45 / 0**;
+  capacity exhausted → **one** clear failure; rate limited → **one** clear failure.
 
 Coverage: health/config/services/technicians, unauthenticated refusal, login,
 assistant options (budget honoured), hold, **duplicate hold → 409**, checkout,

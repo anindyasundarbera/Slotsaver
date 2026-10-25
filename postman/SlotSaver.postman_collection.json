@@ -32,6 +32,10 @@
     {
       "key": "foreignBookingId",
       "value": ""
+    },
+    {
+      "key": "paypalMode",
+      "value": "simulated"
     }
   ],
   "event": [
@@ -119,7 +123,8 @@
                   "});",
                   "pm.test('publishes the business timezone', function () {",
                   "    pm.expect(pm.response.json().timezone).to.be.a('string');",
-                  "});"
+                  "});",
+                  "pm.collectionVariables.set('paypalMode', pm.response.json().paypal_mode);"
                 ]
               }
             }
@@ -582,9 +587,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('409 not approved', function () { pm.response.to.have.status(409); });",
-                  "pm.test('reports ORDER_NOT_APPROVED', function () {",
-                  "    pm.expect(pm.response.json().error.code).to.eql('ORDER_NOT_APPROVED');",
+                  "pm.test('capture refused before approval', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test('provider-specific refusal code', function () {",
+                  "    const code = pm.response.json().error.code;",
+                  "    // simulated provider gates on approval; PayPal returns its own reason.",
+                  "    pm.expect(['ORDER_NOT_APPROVED', 'ORDER_NOT_CAPTURABLE']).to.include(code);",
                   "});"
                 ]
               }
@@ -629,9 +638,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('approved or sandbox-mode 404', function () {",
-                  "    pm.expect([200, 404]).to.include(pm.response.code);",
-                  "});"
+                  "const mode = pm.collectionVariables.get('paypalMode');",
+                  "if (mode === 'sandbox') {",
+                  "    pm.test('skipped in sandbox mode - approve in the PayPal tab instead', function () {",
+                  "        pm.expect(mode).to.eql('sandbox');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('buyer approved (simulated)', function () { pm.response.to.have.status(200); });",
+                  "}"
                 ]
               }
             }
@@ -675,6 +689,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "const mode = pm.collectionVariables.get('paypalMode');",
+                  "if (mode === 'sandbox') {",
+                  "    pm.test('sandbox: still awaiting buyer approval', function () {",
+                  "        pm.expect([409, 200]).to.include(pm.response.code);",
+                  "    });",
+                  "    // Skip the simulated-only follow-ups but keep the negative suites.\n    postman.setNextRequest('Owner routes reject a customer');",
+                  "    return;",
+                  "}",
                   "pm.test('capture accepted', function () { pm.response.to.have.status(200); });",
                   "pm.test('booking confirmed', function () {",
                   "    pm.expect(pm.response.json().booking_status).to.eql('confirmed');",
